@@ -34,14 +34,11 @@ works with a local headless Claude.
   (TDD), Python 3.11+ (`hatchling` build). Editable-installed in `.venv`.
   Verify: `nsh version` → `nightshift 0.0.1`; `pytest` → 1 passed.
 
-- [ ] **1.2 Slice parser**
-  - **Goal:** read/write the standard slice format (SPEC §3) — YAML frontmatter +
-    markdown body — to/from a Python object.
-  - **Seed:** *"Implement a `Slice` model + parser that reads a `.md` file with the
-    SPEC §3 frontmatter (id, title, status, depends_on, attempts, jira) and body
-    sections. Support writing status back into the file. Add a sample slice and
-    round-trip tests."*
-  - **Done when:** parse→modify status→write round-trips; tests pass.
+- [x] **1.2 Slice parser** — done: `nightshift/slice.py` `Slice` dataclass +
+  `parse`/`to_markdown`/`load`/`save`. Format-preserving write-back via
+  `ruamel.yaml` (flips `status`/`attempts` without reformatting the file). 5 tests
+  (fields, defaults, status round-trip preserves body, file load/save, rejects
+  missing frontmatter). Built test-first.
 
 - [ ] **1.3 Config loader**
   - **Goal:** load `~/.nightshift/config.yaml` (SPEC §8) with global defaults +

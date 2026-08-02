@@ -15,6 +15,9 @@ venv/
 runtime.json
 secrets.env
 
+# Personal Claude Code settings (not shared with the public repo / forkers)
+.claude/settings.local.json
+
 # OS / editor
 .DS_Store
 Thumbs.db

@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.env
+*.env
+
+# Nightshift local state (should never live in a repo anyway — belongs in ~/.nightshift)
+.nightshift/
+runtime.json
+secrets.env
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.stackdump
+.idea/
+.vscode/
+*.swp

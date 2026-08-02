@@ -29,13 +29,10 @@ Goal of the phase: **one slice, one repo, run by hand, produces one clean commit
 No parallelism, no daemon, no GitHub, no review yet. Just prove Work→check→Ship
 works with a local headless Claude.
 
-- [ ] **1.1 Project skeleton**
-  - **Goal:** a `nightshift` Python package with `pyproject.toml`, a CLI entry
-    point (`nsh` / `nightshift`), and a `--version` command.
-  - **Seed:** *"Create a Python package `nightshift` with pyproject.toml (Python
-    3.11+), a Click/Typer CLI exposing `nsh` with a `version` command, and a
-    `tests/` dir with one passing smoke test. Installable with `pipx install -e .`"*
-  - **Done when:** `nsh version` prints a version; `pytest` passes.
+- [x] **1.1 Project skeleton** — done: src-layout `nightshift` package, Typer CLI
+  with `nsh`/`nightshift` entry points + `version` command, one passing pytest
+  (TDD), Python 3.11+ (`hatchling` build). Editable-installed in `.venv`.
+  Verify: `nsh version` → `nightshift 0.0.1`; `pytest` → 1 passed.
 
 - [ ] **1.2 Slice parser**
   - **Goal:** read/write the standard slice format (SPEC §3) — YAML frontmatter +

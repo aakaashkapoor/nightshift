@@ -1,0 +1,38 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "nightshift"
+description = "Autonomous local coding-loop daemon — you slice the work, your machine ships it overnight."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+authors = [{ name = "Aakaash Kapoor" }]
+keywords = ["claude", "agents", "automation", "coding-agent", "worktrees"]
+dynamic = ["version"]
+dependencies = [
+    "typer>=0.12",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+]
+
+[project.urls]
+Homepage = "https://github.com/aakaashkapoor/nightshift"
+Repository = "https://github.com/aakaashkapoor/nightshift"
+
+[project.scripts]
+nsh = "nightshift.cli:app"
+nightshift = "nightshift.cli:app"
+
+[tool.hatch.version]
+path = "src/nightshift/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/nightshift"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

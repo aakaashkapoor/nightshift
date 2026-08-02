@@ -18,11 +18,8 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 
 - [x] **0.1 Scaffold the folder** — SPEC.md, README.md, LICENSE (MIT), .gitignore.
 - [x] **0.2 Initialize git + first commit** — done: one commit on `main`.
-- [ ] **0.3 Create the public GitHub repo + push** *(needs `gh` installed & authed)*
-  - **Goal:** `github.com/<you>/nightshift` exists (public), `main` pushed.
-  - **Seed:** *"Install/verify `gh`, `gh auth login`, then `gh repo create nightshift --public --source=. --push`."*
-  - **Done when:** the repo is visible on GitHub with README rendering.
-  - ⚠️ Outward-facing — confirm before running.
+- [x] **0.3 Create the public GitHub repo + push** — done:
+  [github.com/aakaashkapoor/nightshift](https://github.com/aakaashkapoor/nightshift) (public), `main` pushed.
 
 ---
 

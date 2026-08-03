@@ -14,7 +14,7 @@ from typing import Callable
 
 from .config import Config, RepoConfig
 from .executor import Executor
-from .notifier import NullNotifier
+from .notifier import NullNotifier, build_notifier
 from .pipeline import SliceResult, integrate_branch, run_slice
 from .resolver import Resolver
 from .review import AgentReviewer
@@ -186,6 +186,7 @@ def run_daemon_cli(
         executor=ex,
         resolver=Resolver(ex),
         reviewer=AgentReviewer(ex),
+        notifier=build_notifier(cfg.defaults.get("notifier")),
     )
     if once:
         return daemon.tick()

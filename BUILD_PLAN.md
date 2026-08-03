@@ -194,11 +194,16 @@ Live gh/PR paths await a real remote. Next: **Phase 4** (concierge + distributio
 
 ## Phase 5+ — Community extensibility
 
-- [ ] External review (`external_review: true`, GitHub PR provider).
-- [ ] Optional notifiers (Slack, Teams) + the optional permission gate wiring.
-- [ ] Optional Jira tracker.
-- [ ] Document `Source`/`Executor`/`Reviewer`/`Notifier`/`Tracker` interfaces for
-      contributors.
+- [x] **5.1 Notifier adapters** — `SlackNotifier` (webhook, injectable poster) +
+  `build_notifier` factory; wired into `run_daemon_cli` from config. 2 tests.
+- [x] **5.2 Tracker interface** — `Tracker` protocol + `NullTracker` + `build_tracker`
+  (Jira/Linear are future adapters). 1 test.
+- [x] **5.3 Adapters doc** — `docs/ADAPTERS.md` documents all five interfaces and the
+  contribution path (implement → factory → injected-transport test → config).
+- [ ] **5.4 External review wiring** — `pr.open_pr_for_slice(automerge=...)` already
+  supports "leave PR open for human sign-off"; wiring the daemon Ship phase to choose
+  local-merge vs PR-vs-external-review from config needs a live remote to finish.
+- [ ] **5.5 More adapters** (Teams, Discord, Jira, Linear, GitLab) — community.
 - [ ] **Self-hosting:** Nightshift starts building Nightshift. 🌙
 
 ---

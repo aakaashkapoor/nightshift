@@ -45,6 +45,25 @@ def run(
 
 
 @app.command()
+def init(
+    repo: Path = typer.Option(Path("."), "--repo", help="Repo to register (default: current dir)"),
+    config: Optional[Path] = typer.Option(None, "--config", help="Config file (default: ~/.nightshift/config.yaml)"),
+    name: Optional[str] = typer.Option(None, "--name", help="Repo name in the config"),
+    check: Optional[str] = typer.Option(None, "--check", help="Verification command (auto-detected if omitted)"),
+    source: str = typer.Option("local-md", "--source", help="local-md | github-issues"),
+) -> None:
+    """Register a repo in the Nightshift config (auto-detects the check)."""
+    from nightshift.config import register_repo
+    from nightshift.detect import detect_check
+
+    repo = repo.resolve()
+    name = name or repo.name
+    check = check or detect_check(repo) or "echo 'TODO: set your check command'"
+    target = register_repo(config, name=name, path=repo, check=check, source=source)
+    typer.echo(f"registered '{name}' -> {repo}\n  check:  {check}\n  source: {source}\n  config: {target}")
+
+
+@app.command()
 def resume(
     slice: str = typer.Argument(..., help="Blocked slice id to resume"),
     repo: Path = typer.Option(Path("."), "--repo", help="Target repo (default: current dir)"),

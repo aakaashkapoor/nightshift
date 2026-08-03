@@ -20,7 +20,35 @@ from ruamel.yaml import YAML
 DEFAULT_CONFIG_PATH = Path.home() / ".nightshift" / "config.yaml"
 
 _yaml = YAML(typ="safe")
+_yaml_rt = YAML()  # round-trip, for writing config back out
 _VAR = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
+
+
+def register_repo(
+    config_path: Path | str | None,
+    *,
+    name: str,
+    path: Path | str,
+    check: str,
+    source: str = "local-md",
+    base_branch: str = "main",
+) -> Path:
+    """Add/update a repo entry in the central config (concierge / `nsh init`)."""
+    target = Path(config_path) if config_path is not None else DEFAULT_CONFIG_PATH
+    data = {}
+    if target.exists():
+        data = _yaml.load(target.read_text(encoding="utf-8")) or {}
+    repos = data.setdefault("repos", {})
+    repos[name] = {
+        "path": str(path),
+        "source": source,
+        "check": check,
+        "base_branch": base_branch,
+    }
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with target.open("w", encoding="utf-8") as handle:
+        _yaml_rt.dump(data, handle)
+    return target
 
 
 class UnknownRepoError(ValueError):

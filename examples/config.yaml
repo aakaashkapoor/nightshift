@@ -1,0 +1,32 @@
+# Example Nightshift config — copy to ~/.nightshift/config.yaml and edit.
+# One central file: global defaults + a per-repo entry for each managed repo.
+# `check` is ALWAYS per-repo (the verification gate). Secrets go in
+# ~/.nightshift/secrets.env and are referenced as ${VAR} — never commit them.
+
+defaults:
+  max_parallel: 5
+  executor: local-headless      # local headless Claude — no cloud
+  permissions:
+    mode: auto                  # auto | ask
+    denylist: ["force-push main", "sudo", "rm -rf outside worktree"]
+  notifier: { type: none }      # none | slack | teams (optional)
+
+repos:
+  # A local, offline repo (slices live in <path>/.slices/*.md)
+  my-app:
+    path: ~/code/my-app
+    source: local-md
+    check: "pytest && ruff check ."
+    base_branch: main
+    pr: { enabled: false }            # commit straight to the branch
+    external_review: { required: false, provider: github-pr }
+    tracker: { type: none }
+
+  # A GitHub-driven repo (slices are issues; PRs close them)
+  other-app:
+    path: ~/code/other-app
+    source: github-issues
+    check: "make test"
+    base_branch: main
+    pr: { enabled: true, automerge: true }   # AI review always runs first
+    external_review: { required: false, provider: github-pr }

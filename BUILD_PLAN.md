@@ -177,11 +177,18 @@ Live gh/PR paths await a real remote. Next: **Phase 4** (concierge + distributio
 
 ## Phase 4 — Concierge + distribution (v0.4) → LAUNCH
 
-- [ ] `nightshift-setup` concierge skill (re-runnable; auto-detect checks).
-- [ ] Smoke-test dummy slice through the whole loop.
-- [ ] PyPI package + `pipx install nightshift`.
-- [ ] Example config, polished README with origin story, docs.
-- [ ] 🚀 Launch: LinkedIn + wherever the stars are.
+- [x] **4.1 Check auto-detection + `nsh init`** — `detect.py` `detect_check`
+  (pyproject→pytest, package.json→npm test, Makefile→make test, …), `config.register_repo`,
+  `nsh init` command. 5 tests.
+- [x] **4.2 Concierge + slice skills** — `skills/nightshift-setup/SKILL.md`
+  (re-runnable concierge) and `skills/nightshift-slice/SKILL.md` (slice designer).
+- [x] **4.3 Example config + docs** — `examples/config.yaml`; README with commands,
+  quickstart, install-from-source; DEMO.md linked.
+- [ ] **4.4 Smoke-test command** — a `nsh smoke` that runs a throwaway slice
+  end-to-end (folds the manual DEMO harness into one command). *(nice-to-have)*
+- [ ] **4.5 PyPI publish** — ⚠️ **needs you**: a PyPI account + token, then
+  `python -m build && twine upload`. Packaging metadata is ready in pyproject.toml.
+- [ ] **4.6 🚀 Launch** — LinkedIn etc. (your call, when you're ready).
 
 ---
 

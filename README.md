@@ -14,9 +14,11 @@ conflicts and landing a single clean commit. No hands.
 - **Yours to shape.** Sources (local files *or* GitHub Issues), checks,
   review, notifiers, trackers — all pluggable behind small interfaces.
 
-> ⚠️ **Status: design stage (pre-alpha).** The daemon isn't built yet. This repo
-> currently holds the design spec and the step-by-step build plan. Follow along
-> as it comes together.
+> ⚠️ **Status: early (v0.3, pre-alpha).** The core engine works and is proven with
+> a real agent (see [DEMO.md](./DEMO.md)): parallel Work in isolated worktrees, a
+> serial merge-train, agent-driven conflict resolution, always-on AI review,
+> escalation + resume, and GitHub-issues/PR adapters. Not yet published to PyPI.
+> Follow [BUILD_PLAN.md](./BUILD_PLAN.md) for what's done and what's next.
 
 ## Inspiration & credit
 
@@ -44,20 +46,37 @@ grill / nightshift-slice → slices (local .md OR GitHub Issues)
         → ONE clean commit, PR closes the issue, code pushed
 ```
 
+## Commands
+
+```bash
+nsh init --repo .          # register a repo (auto-detects the check command)
+nsh run <slice>            # run one slice by hand: Work → check → review → commit
+nsh daemon [--once]        # drain ready slices (parallel Work + serial merge-train)
+nsh resume <slice>         # resume a blocked slice on its preserved worktree
+nsh version
+```
+
+Config lives in `~/.nightshift/config.yaml` (see [examples/config.yaml](./examples/config.yaml)) —
+one central file with global defaults plus a per-repo entry (each repo's own
+`check`). Slices are `.slices/*.md` files *or* GitHub issues.
+
+## Install (from source, pre-PyPI)
+
+```bash
+git clone https://github.com/aakaashkapoor/nightshift && cd nightshift
+pipx install -e .          # or: pip install -e ".[dev]"
+```
+
+> The intended one-liner once published (v0.4):
+> `pipx install nightshift && nightshift setup`
+
 ## Docs
 
 - **[SPEC.md](./SPEC.md)** — the full design: invariants, architecture, config,
   lifecycle, extensibility, roadmap.
-- **[BUILD_PLAN.md](./BUILD_PLAN.md)** — the ordered, task-by-task build plan
-  (executed manually until Nightshift can self-host).
-
-## Install
-
-> Coming with v0.4. The intended experience:
->
-> ```bash
-> pipx install nightshift && nightshift setup
-> ```
+- **[BUILD_PLAN.md](./BUILD_PLAN.md)** — the ordered, task-by-task build plan.
+- **[DEMO.md](./DEMO.md)** — a real end-to-end run (agent → check → clean commit).
+- **[skills/](./skills)** — the `nightshift-*` Claude skills (setup concierge, slice designer).
 
 ## License
 

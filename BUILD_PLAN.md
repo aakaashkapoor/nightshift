@@ -106,10 +106,12 @@ Next up: **Phase 2** (always-running daemon + parallelism + merge-train).
   [--once] [--interval]`. 5 tests (runs ready, only-runnable, blocked, run_forever
   N ticks, CLI once). Test-first. NOTE: cross-branch deps need the merge-train (2.5).
 
-- [ ] **2.4 Parallel worker pool + scope-overlap safety net**
-  - **Goal:** run up to `max_parallel` runnable roots concurrently, each in its own
-    worktree; serialize roots whose `scope hints` collide.
-  - **Done when:** N independent slices run concurrently; colliding ones serialize.
+- [x] **2.4 Parallel worker pool + scope-overlap safety net** — done:
+  `gitutil.py` (shared git lock so parallel threads are safe; wired into worktree.py
+  + pipeline.py), `Slice.scope_hints()` (path tokens from the Scope-hints section),
+  Daemon `_select_batch` (≤`max_parallel`, non-overlapping — colliders serialize) +
+  `ThreadPoolExecutor` in `tick`. 7 new tests (parallel run, cap, overlap
+  serialize, non-overlap together, scope-hint parsing). Test-first. 62 total.
 
 - [ ] **2.5 Serial merge-train (Ship proper)**
   - **Goal:** integrate branches one at a time — rebase onto `main`, re-run check,

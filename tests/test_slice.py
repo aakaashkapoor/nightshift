@@ -77,3 +77,25 @@ def test_parse_rejects_missing_frontmatter() -> None:
 
     with pytest.raises(ValueError):
         Slice.parse("## Goal\nNo frontmatter here.\n")
+
+
+def test_scope_hints_extracts_path_tokens() -> None:
+    s = Slice.parse(SAMPLE)  # "## Scope hints\nsrc/uploader.py"
+    assert s.scope_hints() == {"src/uploader.py"}
+
+
+def test_scope_hints_ignores_prose_and_notes() -> None:
+    text = (
+        "---\nid: x\ntitle: x\nstatus: ready\n---\n"
+        "## Goal\ng\n\n## Scope hints\n"
+        "`greet.py` (new file), src/util.py\nprobably touches the api layer\n\n"
+        "## Notes\nnot-a-scope.py\n"
+    )
+    s = Slice.parse(text)
+    # path-like tokens only; prose words dropped; the Notes section not included.
+    assert s.scope_hints() == {"greet.py", "src/util.py"}
+
+
+def test_scope_hints_empty_when_absent() -> None:
+    text = "---\nid: x\ntitle: x\nstatus: ready\n---\n## Goal\ng\n"
+    assert Slice.parse(text).scope_hints() == set()

@@ -19,6 +19,7 @@ from pathlib import Path
 from .check import run_check
 from .config import Config
 from .executor import Executor
+from .gitutil import LOCK as _GIT_LOCK
 from .slice import Slice
 from .worktree import WorktreeManager
 
@@ -34,9 +35,10 @@ class SliceResult:
 
 
 def _git(cwd: Path | str, *args: str) -> str:
-    result = subprocess.run(
-        ["git", "-C", str(cwd), *args], capture_output=True, text=True
-    )
+    with _GIT_LOCK:
+        result = subprocess.run(
+            ["git", "-C", str(cwd), *args], capture_output=True, text=True
+        )
     if result.returncode != 0:
         raise RuntimeError(f"git {' '.join(args)} failed: {result.stderr.strip()}")
     return result.stdout.strip()

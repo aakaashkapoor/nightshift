@@ -12,6 +12,7 @@ quoting, flow-style lists — untouched.
 from __future__ import annotations
 
 import io
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -71,6 +72,28 @@ class Slice:
         buf = io.StringIO()
         _yaml.dump(self._meta, buf)
         return f"{_FENCE}\n{buf.getvalue()}{_FENCE}\n{self.body}"
+
+    def scope_hints(self) -> set[str]:
+        """Path-like tokens under the '## Scope hints' section (advisory).
+
+        Used only for the parallel-safety overlap check (SPEC §5) — prose words are
+        dropped; a token counts only if it looks like a path (has '.', '/' or '\\').
+        """
+        hints: set[str] = set()
+        collecting = False
+        for line in self.body.splitlines():
+            stripped = line.strip()
+            if stripped.lower().startswith("## scope hints"):
+                collecting = True
+                continue
+            if collecting:
+                if stripped.startswith("## "):  # next section ends the block
+                    break
+                for token in re.split(r"[,\s]+", stripped):
+                    token = token.strip("`-*() ")
+                    if token and ("." in token or "/" in token or "\\" in token):
+                        hints.add(token)
+        return hints
 
     @classmethod
     def load(cls, path: Path | str) -> "Slice":

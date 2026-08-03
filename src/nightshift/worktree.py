@@ -12,6 +12,8 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+from .gitutil import LOCK as _GIT_LOCK
+
 BRANCH_PREFIX = "nightshift/"
 
 
@@ -31,11 +33,12 @@ class WorktreeManager:
             self.root = self.repo.parent / ".nightshift-worktrees" / self.repo.name
 
     def _git(self, *args: str) -> str:
-        result = subprocess.run(
-            ["git", "-C", str(self.repo), *args],
-            capture_output=True,
-            text=True,
-        )
+        with _GIT_LOCK:
+            result = subprocess.run(
+                ["git", "-C", str(self.repo), *args],
+                capture_output=True,
+                text=True,
+            )
         if result.returncode != 0:
             raise RuntimeError(
                 f"git {' '.join(args)} failed: {result.stderr.strip()}"

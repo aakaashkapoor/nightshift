@@ -128,10 +128,11 @@ Next up: **Phase 2** (always-running daemon + parallelism + merge-train).
   `run_daemon_cli` wire a real resolver. Test: induced conflict now resolves &
   merges (both slices done). 67 total.
 
-- [ ] **2.7 Escalation cap + blocked/notify**
-  - **Goal:** cap resolver attempts (N=2) → `blocked` + preserve worktree + eject
-    from queue + write note into the issue + optional notifier hook.
-  - **Done when:** an unresolvable slice blocks cleanly and the queue keeps moving.
+- [x] **2.7 Escalation cap + blocked/notify** — done: resolver cap = `resolve_attempts`
+  (N=2); `notifier.py` `Notifier` protocol + `NullNotifier` (Slack/Teams later);
+  `source.set_blocked` writes a `## Blocked` reason into the issue; daemon `_block`
+  = preserve worktree + note + notify; blocked slice is ejected (no longer `ready`
+  so the queue keeps moving). 2 tests (note+notify, resolver-cap blocks). 69 total.
 
 - [ ] **2.8 Resumability + runtime.json**
   - **Goal:** `nsh resume <slice>` re-attaches to a preserved worktree and continues

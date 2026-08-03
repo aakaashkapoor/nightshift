@@ -14,6 +14,7 @@ from typing import Callable
 
 from .config import Config, RepoConfig
 from .executor import Executor
+from .notifier import NullNotifier
 from .pipeline import SliceResult, integrate_branch, run_slice
 from .resolver import Resolver
 from .scheduler import Dag
@@ -38,6 +39,7 @@ class Daemon:
         max_parallel: int | None = None,
         resolver=None,
         resolve_attempts: int = 2,
+        notifier=None,
     ):
         self.source = source
         self.repo_cfg = repo_cfg
@@ -47,6 +49,7 @@ class Daemon:
         self.max_parallel = max_parallel or repo_cfg.max_parallel
         self.resolver = resolver
         self.resolve_attempts = resolve_attempts
+        self.notifier = notifier or NullNotifier()
 
     def _select_batch(self, runnable: list[Slice]) -> list[Slice]:
         """Up to max_parallel mutually non-overlapping slices.
@@ -82,11 +85,19 @@ class Daemon:
                 sl.id, "blocked", 0, None, self.worktrees.branch_for(sl.id), f"error: {exc}"
             )
 
+    def _block(self, work: SliceResult, reason: str) -> SliceResult:
+        """Escalation: preserve worktree, note the reason in the issue, notify."""
+        self.worktrees.preserve(work.slice_id)
+        self.source.set_blocked(work.slice_id, reason)
+        self.notifier.notify("blocked", f"{work.slice_id}: {reason}")
+        return SliceResult(
+            work.slice_id, BLOCKED, work.attempts, work.commit, work.branch, reason
+        )
+
     def _integrate(self, work: SliceResult) -> SliceResult:
         """Serial merge-train step for one committed branch (SPEC §6)."""
         if work.status != DONE:  # Work itself failed -> nothing to integrate
-            self.source.set_status(work.slice_id, work.status)
-            return work
+            return self._block(work, work.detail)
         result = integrate_branch(
             repo_path=self.repo_cfg.path,
             worktree_path=self.worktrees.path_for(work.slice_id),
@@ -102,11 +113,7 @@ class Daemon:
             return SliceResult(
                 work.slice_id, DONE, work.attempts, result.commit, work.branch, "merged"
             )
-        self.worktrees.preserve(work.slice_id)
-        self.source.set_status(work.slice_id, BLOCKED)
-        return SliceResult(
-            work.slice_id, BLOCKED, work.attempts, work.commit, work.branch, result.detail
-        )
+        return self._block(work, result.detail)
 
     def tick(self) -> list[SliceResult]:
         """One pass: parallel Work on a non-overlapping batch, then a serial merge-train."""

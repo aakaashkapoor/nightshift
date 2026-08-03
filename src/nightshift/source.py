@@ -51,3 +51,13 @@ class LocalMdSource:
             raise KeyError(f"no slice {slice_id!r} in {self.root}")
         sl.status = status
         self.save(sl)
+
+    def set_blocked(self, slice_id: str, reason: str) -> None:
+        """Mark blocked and record *why* into the issue body (SPEC §7)."""
+        sl = self.get(slice_id)
+        if sl is None:
+            raise KeyError(f"no slice {slice_id!r} in {self.root}")
+        sl.status = "blocked"
+        if reason and "## Blocked" not in sl.body:
+            sl.body = sl.body.rstrip() + f"\n\n## Blocked\n{reason}\n"
+        self.save(sl)

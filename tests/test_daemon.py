@@ -99,8 +99,31 @@ class StripResolver:
         readme.write_text("\n".join(kept) + "\n", encoding="utf-8")
 
 
+class SpyNotifier:
+    def __init__(self):
+        self.events = []
+
+    def notify(self, event, message) -> None:
+        self.events.append((event, message))
+
+
+class NoOpResolver:
+    """A resolver that never actually resolves -> exercises the escalation cap."""
+
+    def __call__(self, worktree_path) -> None:
+        return None
+
+
 def _daemon(
-    repo, tmp_path, agent, *, check="echo ok", max_attempts=3, max_parallel=5, resolver=None
+    repo,
+    tmp_path,
+    agent,
+    *,
+    check="echo ok",
+    max_attempts=3,
+    max_parallel=5,
+    resolver=None,
+    notifier=None,
 ) -> Daemon:
     return Daemon(
         source=LocalMdSource(repo),
@@ -110,6 +133,7 @@ def _daemon(
         max_attempts=max_attempts,
         max_parallel=max_parallel,
         resolver=resolver,
+        notifier=notifier,
     )
 
 
@@ -240,6 +264,35 @@ def test_resolver_resolves_conflict_and_merges(repo, tmp_path) -> None:
     assert by_id["slice-002"] == "done"  # no longer blocked
     readme = _git(repo, "show", "main:README.md")
     assert "line-slice-001" in readme and "line-slice-002" in readme
+
+
+# --- escalation: cap + note + notify -----------------------------------------
+
+def test_blocked_slice_records_reason_and_notifies(repo, tmp_path) -> None:
+    _write_slice(repo, "slice-001")
+    spy = SpyNotifier()
+    _daemon(repo, tmp_path, Agent(), check="exit 1", max_attempts=1, notifier=spy).tick()
+
+    sl = LocalMdSource(repo).get("slice-001")
+    assert sl.status == "blocked"
+    assert "## Blocked" in sl.body  # reason written into the issue
+    assert spy.events and spy.events[0][0] == "blocked"
+    assert "slice-001" in spy.events[0][1]
+
+
+def test_resolver_cap_blocks_when_never_resolved(repo, tmp_path) -> None:
+    # Conflict + a resolver that never resolves -> cap trips -> blocked.
+    _write_slice(repo, "slice-001")
+    _write_slice(repo, "slice-002")
+    results = _daemon(
+        repo, tmp_path, ConflictAgent(), max_parallel=5, resolver=NoOpResolver()
+    ).tick()
+
+    by_id = {r.slice_id: r.status for r in results}
+    assert by_id["slice-001"] == "done"
+    assert by_id["slice-002"] == "blocked"
+    blocked = next(r for r in results if r.slice_id == "slice-002")
+    assert blocked.detail == "unresolved conflict"
 
 
 # --- loop + CLI ---------------------------------------------------------------

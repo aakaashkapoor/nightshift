@@ -8,6 +8,7 @@ merge — or *preserved* for inspection when a slice is blocked.
 
 from __future__ import annotations
 
+import contextlib
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -40,9 +41,7 @@ class WorktreeManager:
                 text=True,
             )
         if result.returncode != 0:
-            raise RuntimeError(
-                f"git {' '.join(args)} failed: {result.stderr.strip()}"
-            )
+            raise RuntimeError(f"git {' '.join(args)} failed: {result.stderr.strip()}")
         return result.stdout
 
     def branch_for(self, slice_id: str) -> str:
@@ -65,10 +64,8 @@ class WorktreeManager:
         """Remove the worktree and delete its branch (post-merge cleanup)."""
         path = self.path_for(slice_id)
         self._git("worktree", "remove", "--force", str(path))
-        try:
-            self._git("branch", "-D", self.branch_for(slice_id))
-        except RuntimeError:
-            pass  # branch already gone (e.g. merged & pruned)
+        with contextlib.suppress(RuntimeError):
+            self._git("branch", "-D", self.branch_for(slice_id))  # may be pruned
 
     def preserve(self, slice_id: str) -> Worktree:
         """Leave the worktree in place (for a blocked slice); return its handle."""

@@ -13,9 +13,7 @@ import pytest
 from nightshift.executor import Executor, RunOutput
 from nightshift.pipeline import run_slice_cli
 
-SLICE_TEXT = (
-    "---\nid: slice-001\ntitle: Wire it up\nstatus: ready\n---\n## Goal\nWire it.\n"
-)
+SLICE_TEXT = "---\nid: slice-001\ntitle: Wire it up\nstatus: ready\n---\n## Goal\nWire it.\n"
 
 
 def _git(cwd, *args) -> str:
@@ -79,6 +77,4 @@ def test_run_cli_accepts_slice_path(repo, config_file, tmp_path) -> None:
 
 def test_run_cli_unknown_slice_raises(repo, config_file) -> None:
     with pytest.raises(FileNotFoundError):
-        run_slice_cli(
-            "nope", repo=repo, config_path=config_file, executor=Executor(runner=Agent())
-        )
+        run_slice_cli("nope", repo=repo, config_path=config_file, executor=Executor(runner=Agent()))

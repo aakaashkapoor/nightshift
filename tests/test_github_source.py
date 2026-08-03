@@ -18,10 +18,20 @@ class FakeGh:
 
 
 ISSUES = [
-    {"number": 1, "title": "Model", "body": "## Goal\nmodel",
-     "labels": [{"name": "nightshift:ready"}], "state": "OPEN"},
-    {"number": 2, "title": "Login", "body": "## Goal\nlogin\n\nDepends-on: #1",
-     "labels": [{"name": "nightshift:in-progress"}], "state": "OPEN"},
+    {
+        "number": 1,
+        "title": "Model",
+        "body": "## Goal\nmodel",
+        "labels": [{"name": "nightshift:ready"}],
+        "state": "OPEN",
+    },
+    {
+        "number": 2,
+        "title": "Login",
+        "body": "## Goal\nlogin\n\nDepends-on: #1",
+        "labels": [{"name": "nightshift:in-progress"}],
+        "state": "OPEN",
+    },
     {"number": 3, "title": "Old", "body": "done", "labels": [], "state": "CLOSED"},
     {"number": 4, "title": "Not ours", "body": "x", "labels": [], "state": "OPEN"},
 ]

@@ -45,9 +45,9 @@ REVIEW_PROMPT = (
     "the slice's goal and acceptance criteria. Focus on correctness bugs and clear "
     "requirement misses.\n\n"
     "Respond with ONLY a JSON object: "
-    '{\"findings\": [{\"severity\": \"blocking\"|\"advisory\", \"message\": \"...\"}]}. '
-    "Use \"blocking\" only for real correctness/acceptance failures; everything else "
-    "is \"advisory\". An empty findings list means the work is good."
+    '{"findings": [{"severity": "blocking"|"advisory", "message": "..."}]}. '
+    'Use "blocking" only for real correctness/acceptance failures; everything else '
+    'is "advisory". An empty findings list means the work is good.'
 )
 
 FIX_PREFIX = (

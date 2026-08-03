@@ -15,10 +15,7 @@ from nightshift.slice import Slice
 from nightshift.source import LocalMdSource
 from nightshift.worktree import WorktreeManager
 
-CHECK = (
-    f'"{sys.executable}" -c '
-    f'"import os,sys; sys.exit(0 if os.path.exists(\'impl.txt\') else 1)"'
-)
+CHECK = f'"{sys.executable}" -c "import os,sys; sys.exit(0 if os.path.exists(\'impl.txt\') else 1)"'
 
 SLICE_TEXT = "---\nid: slice-001\ntitle: t\nstatus: ready\n---\n## Goal\ng\n"
 
@@ -63,15 +60,22 @@ def test_resume_completes_a_blocked_slice(repo, tmp_path) -> None:
     sl = Slice.parse(SLICE_TEXT)
 
     blocked = run_slice(
-        sl, repo_path=repo, check_cmd=CHECK, worktrees=wts,
-        executor=Executor(runner=FailAgent()), max_attempts=1,
+        sl,
+        repo_path=repo,
+        check_cmd=CHECK,
+        worktrees=wts,
+        executor=Executor(runner=FailAgent()),
+        max_attempts=1,
     )
     assert blocked.status == "blocked"
     assert wts.exists("slice-001")  # worktree preserved
 
     resumed = resume_slice(
-        sl, check_cmd=CHECK, worktrees=wts,
-        executor=Executor(runner=OkAgent()), max_attempts=1,
+        sl,
+        check_cmd=CHECK,
+        worktrees=wts,
+        executor=Executor(runner=OkAgent()),
+        max_attempts=1,
     )
     assert resumed.status == "done"
     assert resumed.commit is not None
@@ -81,9 +85,7 @@ def test_resume_cli_end_to_end(repo, tmp_path) -> None:
     (repo / ".slices" / "slice-001.md").write_text(SLICE_TEXT, encoding="utf-8")
     cfg = tmp_path / "config.json"  # JSON is valid YAML -> no quoting headaches
     cfg.write_text(
-        json.dumps(
-            {"repos": {"demo": {"path": str(repo), "check": CHECK, "base_branch": "main"}}}
-        ),
+        json.dumps({"repos": {"demo": {"path": str(repo), "check": CHECK, "base_branch": "main"}}}),
         encoding="utf-8",
     )
     runtime_path = tmp_path / "runtime.json"
@@ -102,8 +104,11 @@ def test_resume_cli_end_to_end(repo, tmp_path) -> None:
 
     # 2) resume with a working agent -> done + merged + runtime forgotten.
     result = run_resume_cli(
-        "slice-001", repo=repo, config_path=cfg,
-        executor=Executor(runner=OkAgent()), runtime_path=runtime_path,
+        "slice-001",
+        repo=repo,
+        config_path=cfg,
+        executor=Executor(runner=OkAgent()),
+        runtime_path=runtime_path,
     )
     assert result.status == "done"
     assert LocalMdSource(repo).get("slice-001").status == "done"

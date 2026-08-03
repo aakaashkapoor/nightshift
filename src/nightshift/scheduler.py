@@ -26,16 +26,14 @@ class Dag:
     slices: dict[str, Slice]  # id -> slice, insertion order preserved
 
     @classmethod
-    def build(cls, slices: list[Slice]) -> "Dag":
+    def build(cls, slices: list[Slice]) -> Dag:
         by_id: dict[str, Slice] = {}
         for s in slices:
             by_id[s.id] = s
         for s in slices:
             for dep in s.depends_on:
                 if dep not in by_id:
-                    raise ValueError(
-                        f"slice {s.id!r} depends on unknown slice {dep!r}"
-                    )
+                    raise ValueError(f"slice {s.id!r} depends on unknown slice {dep!r}")
         dag = cls(slices=by_id)
         dag._topo()  # validates acyclicity (raises CycleError)
         return dag

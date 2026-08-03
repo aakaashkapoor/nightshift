@@ -52,7 +52,7 @@ class Slice:
     _meta: Any = None  # ruamel map retained for format-preserving write-back
 
     @classmethod
-    def parse(cls, text: str) -> "Slice":
+    def parse(cls, text: str) -> Slice:
         meta, body = _split_frontmatter(text)
         return cls(
             id=meta.get("id"),
@@ -96,7 +96,7 @@ class Slice:
         return hints
 
     @classmethod
-    def load(cls, path: Path | str) -> "Slice":
+    def load(cls, path: Path | str) -> Slice:
         return cls.parse(Path(path).read_text(encoding="utf-8"))
 
     def save(self, path: Path | str) -> None:

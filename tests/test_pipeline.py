@@ -18,10 +18,7 @@ from nightshift.worktree import WorktreeManager
 
 # Passes only if the agent created impl.txt in the worktree (same quoting pattern
 # as test_check.py, verified to work on this Windows setup).
-CHECK = (
-    f'"{sys.executable}" -c '
-    f'"import os,sys; sys.exit(0 if os.path.exists(\'impl.txt\') else 1)"'
-)
+CHECK = f'"{sys.executable}" -c "import os,sys; sys.exit(0 if os.path.exists(\'impl.txt\') else 1)"'
 
 
 def _git(cwd, *args) -> str:

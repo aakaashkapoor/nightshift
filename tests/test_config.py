@@ -32,8 +32,8 @@ def test_resolve_repo_by_name_returns_check() -> None:
 
 def test_field_defaults_applied_when_omitted() -> None:
     cfg = Config.parse(SAMPLE)
-    assert cfg.repo("other-app").base_branch == "main"      # omitted -> default
-    assert cfg.repo("my-app").base_branch == "develop"      # explicit
+    assert cfg.repo("other-app").base_branch == "main"  # omitted -> default
+    assert cfg.repo("my-app").base_branch == "develop"  # explicit
     assert cfg.repo("other-app").pr.get("enabled") is False  # pr omitted -> off
 
 

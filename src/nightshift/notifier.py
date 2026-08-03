@@ -23,7 +23,7 @@ class NullNotifier:
         return None
 
 
-def _default_poster(url: str, payload: dict) -> None:
+def _default_poster(url: str, payload: dict) -> None:  # pragma: no cover
     data = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
     urllib.request.urlopen(req, timeout=10)  # noqa: S310 (user-configured webhook)

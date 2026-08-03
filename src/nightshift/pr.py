@@ -28,13 +28,11 @@ def build_pr_body(sl, *, closes_issue: str | None = None) -> str:
     return "\n".join(parts).strip() + "\n"
 
 
-def _runner(bin_name: str, repo_path: Path | str):
+def _runner(bin_name: str, repo_path: Path | str):  # pragma: no cover
     exe = shutil.which(bin_name) or bin_name
 
     def run(*args: str) -> str:
-        result = subprocess.run(
-            [exe, *args], cwd=str(repo_path), capture_output=True, text=True
-        )
+        result = subprocess.run([exe, *args], cwd=str(repo_path), capture_output=True, text=True)
         if result.returncode != 0:
             raise RuntimeError(f"{bin_name} {' '.join(args)} failed: {result.stderr.strip()}")
         return result.stdout.strip()
@@ -51,17 +49,23 @@ class GitHubPR:
         """Push the branch and open a PR; returns the PR URL."""
         self.git("push", "-u", "origin", branch)
         return self.gh(
-            "pr", "create", "--head", branch, "--base", base,
-            "--title", title, "--body", body,
+            "pr",
+            "create",
+            "--head",
+            branch,
+            "--base",
+            base,
+            "--title",
+            title,
+            "--body",
+            body,
         )
 
     def automerge(self, branch: str) -> None:
         self.gh("pr", "merge", branch, "--squash", "--auto")
 
 
-def open_pr_for_slice(
-    pr: GitHubPR, sl, *, branch: str, base: str, automerge: bool
-) -> str:
+def open_pr_for_slice(pr: GitHubPR, sl, *, branch: str, base: str, automerge: bool) -> str:
     body = build_pr_body(sl, closes_issue=issue_number_for(sl.id))
     url = pr.open(branch=branch, base=base, title=sl.title, body=body)
     if automerge:

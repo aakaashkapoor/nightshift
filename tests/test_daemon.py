@@ -139,6 +139,7 @@ def _daemon(
 
 # --- scheduling ---------------------------------------------------------------
 
+
 def test_tick_runs_ready_slice_and_marks_done(repo, tmp_path) -> None:
     _write_slice(repo, "slice-001")
     results = _daemon(repo, tmp_path, Agent()).tick()
@@ -200,6 +201,7 @@ def test_non_overlapping_scope_hints_run_together(repo, tmp_path) -> None:
 
 # --- merge-train (Ship) -------------------------------------------------------
 
+
 def test_tick_lands_commit_on_main(repo, tmp_path) -> None:
     _write_slice(repo, "slice-001")
     before = _git(repo, "rev-parse", "main")
@@ -221,7 +223,7 @@ def test_dependent_slice_sees_parent_after_merge(repo, tmp_path) -> None:
     # main that already had slice-001's merge.
     check = (
         f'"{sys.executable}" -c '
-        f'"import os,sys; sys.exit(0 if os.path.exists(\'parent.txt\') else 1)"'
+        f"\"import os,sys; sys.exit(0 if os.path.exists('parent.txt') else 1)\""
     )
     _write_slice(repo, "slice-001")
     _write_slice(repo, "slice-002", deps="[slice-001]")
@@ -268,6 +270,7 @@ def test_resolver_resolves_conflict_and_merges(repo, tmp_path) -> None:
 
 # --- escalation: cap + note + notify -----------------------------------------
 
+
 def test_blocked_slice_records_reason_and_notifies(repo, tmp_path) -> None:
     _write_slice(repo, "slice-001")
     spy = SpyNotifier()
@@ -297,6 +300,7 @@ def test_resolver_cap_blocks_when_never_resolved(repo, tmp_path) -> None:
 
 # --- loop + CLI ---------------------------------------------------------------
 
+
 def test_run_forever_ticks_n_times_then_stops(repo, tmp_path) -> None:
     d = _daemon(repo, tmp_path, Agent())
     calls = []
@@ -312,7 +316,5 @@ def test_run_daemon_cli_once(repo, tmp_path) -> None:
         f'repos:\n  demo:\n    path: "{repo.as_posix()}"\n    check: "echo ok"\n',
         encoding="utf-8",
     )
-    results = run_daemon_cli(
-        repo, config_path=cfg, once=True, executor=Executor(runner=Agent())
-    )
+    results = run_daemon_cli(repo, config_path=cfg, once=True, executor=Executor(runner=Agent()))
     assert results[0].status == "done"

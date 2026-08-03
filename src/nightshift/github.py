@@ -26,13 +26,11 @@ _LABEL_TO_STATUS = {v: k for k, v in LABELS.items()}
 _DEPENDS_RE = re.compile(r"(?im)^depends-on:\s*(.+)$")
 
 
-def _default_gh(repo_path: Path | str):
+def _default_gh(repo_path: Path | str):  # pragma: no cover
     exe = shutil.which("gh") or "gh"
 
     def run(*args: str) -> str:
-        result = subprocess.run(
-            [exe, *args], cwd=str(repo_path), capture_output=True, text=True
-        )
+        result = subprocess.run([exe, *args], cwd=str(repo_path), capture_output=True, text=True)
         if result.returncode != 0:
             raise RuntimeError(f"gh {' '.join(args)} failed: {result.stderr.strip()}")
         return result.stdout
@@ -51,8 +49,14 @@ class GitHubIssuesSource:
         import json
 
         out = self.gh(
-            "issue", "list", "--state", "all", "--limit", "500",
-            "--json", "number,title,body,labels,state",
+            "issue",
+            "list",
+            "--state",
+            "all",
+            "--limit",
+            "500",
+            "--json",
+            "number,title,body,labels,state",
         )
         slices = [self._to_slice(issue) for issue in json.loads(out)]
         return [s for s in slices if s is not None]
@@ -115,8 +119,5 @@ def _parse_depends(body: str) -> list[str]:
     match = _DEPENDS_RE.search(body)
     if not match:
         return []
-    return [
-        f"issue-{tok.lstrip('#').strip()}"
-        for tok in match.group(1).split(",")
-        if tok.strip()
-    ]
+    # strip whitespace FIRST, then the leading '#': " #2" -> "2", not "#2".
+    return [f"issue-{tok.strip().lstrip('#')}" for tok in match.group(1).split(",") if tok.strip()]

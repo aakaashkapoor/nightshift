@@ -75,6 +75,18 @@ git clone https://github.com/aakaashkapoor/nightshift && cd nightshift
 pipx install -e .          # or: pip install -e ".[dev]"
 ```
 
+## Quality gate
+
+Every change is held to a pristine bar — run the full gate locally:
+
+```bash
+python scripts/check.py     # or: make check
+```
+
+It runs **Ruff** (lint + format), **mypy** (types), and **pytest with 100% branch
+coverage** (`--cov-fail-under=100`). All three must pass. This is the repo's own
+Nightshift `check` command — so Nightshift can eventually gate its own slices on it.
+
 ## Docs
 
 - **[SPEC.md](./SPEC.md)** — the full design: invariants, architecture, config,

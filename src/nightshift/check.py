@@ -31,9 +31,7 @@ def _as_text(value) -> str:
     return value
 
 
-def run_check(
-    command: str, cwd: Path | str, timeout: int = DEFAULT_TIMEOUT
-) -> CheckResult:
+def run_check(command: str, cwd: Path | str, timeout: int = DEFAULT_TIMEOUT) -> CheckResult:
     """Run ``command`` in ``cwd`` through the shell; capture combined output."""
     try:
         result = subprocess.run(

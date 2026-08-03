@@ -35,7 +35,7 @@ def register_repo(
 ) -> Path:
     """Add/update a repo entry in the central config (concierge / `nsh init`)."""
     target = Path(config_path) if config_path is not None else DEFAULT_CONFIG_PATH
-    data = {}
+    data: dict = {}
     if target.exists():
         data = _yaml.load(target.read_text(encoding="utf-8")) or {}
     repos = data.setdefault("repos", {})
@@ -89,12 +89,12 @@ class Config:
     repos: dict  # name -> raw repo entry
 
     @classmethod
-    def parse(cls, text: str) -> "Config":
+    def parse(cls, text: str) -> Config:
         data = _interpolate(_yaml.load(text) or {})
         return cls(defaults=data.get("defaults") or {}, repos=data.get("repos") or {})
 
     @classmethod
-    def load(cls, path: Path | str | None = None) -> "Config":
+    def load(cls, path: Path | str | None = None) -> Config:
         p = Path(path) if path is not None else DEFAULT_CONFIG_PATH
         if not p.exists():
             raise FileNotFoundError(f"Nightshift config not found: {p}")
@@ -132,7 +132,5 @@ class Config:
                 "external_review", {"required": False, "provider": "github-pr"}
             ),
             tracker=entry.get("tracker", {"type": "none"}),
-            max_parallel=entry.get(
-                "max_parallel", self.defaults.get("max_parallel", 5)
-            ),
+            max_parallel=entry.get("max_parallel", self.defaults.get("max_parallel", 5)),
         )

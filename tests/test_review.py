@@ -57,6 +57,7 @@ def _run(repo, tmp_path, reviewer):
 
 # --- parsing ------------------------------------------------------------------
 
+
 def test_parse_findings_valid() -> None:
     rr = parse_findings(json.dumps({"findings": [{"severity": "blocking", "message": "m"}]}))
     assert len(rr.blocking) == 1 and rr.blocking[0].message == "m"
@@ -68,6 +69,7 @@ def test_parse_findings_empty_and_malformed() -> None:
 
 
 # --- the review gate in run_slice ---------------------------------------------
+
 
 class FlakyReviewer:
     """Blocking on the first look, clean after the fix round."""

@@ -39,9 +39,7 @@ class Runtime:
     def reconcile(self, *, known_slice_ids: set[str], worktrees) -> None:
         """Drop entries whose slice is gone or whose worktree no longer exists."""
         stale = [
-            sid
-            for sid in self._data
-            if sid not in known_slice_ids or not worktrees.exists(sid)
+            sid for sid in self._data if sid not in known_slice_ids or not worktrees.exists(sid)
         ]
         for sid in stale:
             self._data.pop(sid, None)

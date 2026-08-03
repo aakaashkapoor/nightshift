@@ -9,8 +9,8 @@ interval.
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
-from typing import Callable
 
 from .config import Config, RepoConfig
 from .executor import Executor
@@ -97,8 +97,13 @@ class Daemon:
         self.source.set_blocked(work.slice_id, reason)
         self.notifier.notify("blocked", f"{work.slice_id}: {reason}")
         return SliceResult(
-            work.slice_id, BLOCKED, work.attempts, work.commit, work.branch,
-            reason, work.session_id,
+            work.slice_id,
+            BLOCKED,
+            work.attempts,
+            work.commit,
+            work.branch,
+            reason,
+            work.session_id,
         )
 
     def _integrate(self, work: SliceResult) -> SliceResult:
@@ -118,8 +123,13 @@ class Daemon:
             self.worktrees.teardown(work.slice_id)
             self.source.set_status(work.slice_id, DONE)
             return SliceResult(
-                work.slice_id, DONE, work.attempts, result.commit, work.branch,
-                "merged", work.session_id,
+                work.slice_id,
+                DONE,
+                work.attempts,
+                result.commit,
+                work.branch,
+                "merged",
+                work.session_id,
             )
         return self._block(work, result.detail)
 
@@ -129,9 +139,7 @@ class Daemon:
         if not slices:
             return []
         if self.runtime is not None:
-            self.runtime.reconcile(
-                known_slice_ids={s.id for s in slices}, worktrees=self.worktrees
-            )
+            self.runtime.reconcile(known_slice_ids={s.id for s in slices}, worktrees=self.worktrees)
         batch = self._select_batch(Dag.build(slices).runnable())
         if not batch:
             return []
@@ -147,9 +155,7 @@ class Daemon:
                 if r.status == DONE:
                     self.runtime.forget(r.slice_id)
                 else:
-                    self.runtime.record(
-                        r.slice_id, session_id=r.session_id, branch=r.branch
-                    )
+                    self.runtime.record(r.slice_id, session_id=r.session_id, branch=r.branch)
         return results
 
     def run_forever(
@@ -190,5 +196,5 @@ def run_daemon_cli(
     )
     if once:
         return daemon.tick()
-    daemon.run_forever(interval=interval)
-    return []
+    daemon.run_forever(interval=interval)  # pragma: no cover - blocks forever
+    return []  # pragma: no cover

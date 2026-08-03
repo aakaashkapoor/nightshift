@@ -193,6 +193,14 @@ Live gh/PR paths await a real remote. Next: **Phase 4** (concierge + distributio
 
 ---
 
+## Quality gate (repo's own `check`)
+
+- [x] **Q.1 Static analysis + 100% coverage** — Ruff (lint+format), mypy, and
+  pytest with `--cov-fail-under=100`, all wired into `python scripts/check.py`
+  (`make check`). 137 tests, 100% branch coverage. Configured in pyproject.toml.
+  Found & fixed a real bug (`_parse_depends` `#`/whitespace order). This is the
+  repo's own Nightshift check — run locally on every change.
+
 ## Phase 5+ — Community extensibility
 
 - [x] **5.1 Notifier adapters** — `SlackNotifier` (webhook, injectable poster) +

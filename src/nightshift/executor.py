@@ -20,9 +20,9 @@ import json
 import os
 import shutil
 import subprocess
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
 
 CLAUDE_BIN = "claude"
 
@@ -46,16 +46,14 @@ class ExecResult:
 Runner = Callable[[list[str], str, str], RunOutput]
 
 
-def _default_runner(argv: list[str], cwd: str, stdin_text: str) -> RunOutput:
+def _default_runner(argv: list[str], cwd: str, stdin_text: str) -> RunOutput:  # pragma: no cover
     """Run the real ``claude`` CLI. Prompt on stdin; JSON on stdout.
 
     Not unit tested (needs a live, authenticated Claude) — smoke-tested at 1.8.
     """
     exe = shutil.which(argv[0])
     if exe is None:
-        raise FileNotFoundError(
-            f"'{argv[0]}' not found on PATH — is Claude Code installed?"
-        )
+        raise FileNotFoundError(f"'{argv[0]}' not found on PATH — is Claude Code installed?")
     cmd = [exe, *argv[1:]]
     # On Windows the CLI may be a .cmd/.bat shim, which must go through the shell.
     if os.name == "nt" and exe.lower().endswith((".cmd", ".bat")):
@@ -68,9 +66,7 @@ def _default_runner(argv: list[str], cwd: str, stdin_text: str) -> RunOutput:
             shell=True,
         )
     else:
-        proc = subprocess.run(
-            cmd, cwd=cwd, input=stdin_text, capture_output=True, text=True
-        )
+        proc = subprocess.run(cmd, cwd=cwd, input=stdin_text, capture_output=True, text=True)
     return RunOutput(proc.returncode, proc.stdout, proc.stderr)
 
 
@@ -121,9 +117,7 @@ class Executor:
         out = self.runner(argv, str(cwd), prompt)
         return self._parse(out)
 
-    def execute(
-        self, cwd: Path | str, sl, resume_session: str | None = None
-    ) -> ExecResult:
+    def execute(self, cwd: Path | str, sl, resume_session: str | None = None) -> ExecResult:
         return self.execute_prompt(cwd, self.build_prompt(sl), resume_session)
 
     def _parse(self, out: RunOutput) -> ExecResult:

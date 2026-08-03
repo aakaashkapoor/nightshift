@@ -55,6 +55,47 @@ def _commit_all(worktree_path: Path, message: str) -> str:
     return _git(worktree_path, "rev-parse", "HEAD")
 
 
+@dataclass
+class IntegrationResult:
+    merged: bool
+    commit: str | None
+    detail: str
+
+
+def integrate_branch(
+    *,
+    repo_path: Path | str,
+    worktree_path: Path | str,
+    branch: str,
+    base_branch: str,
+    check_cmd: str,
+) -> IntegrationResult:
+    """Serial merge-train step (SPEC §6): rebase onto base -> re-check -> ff-merge.
+
+    Run one branch at a time so each rebase targets a *stationary* base. On a rebase
+    conflict or a post-rebase red check, returns ``merged=False`` (2.6's resolver
+    agent will hook in here); otherwise fast-forwards ``base_branch`` to the branch.
+    """
+    try:
+        _git(worktree_path, "rebase", base_branch)
+    except RuntimeError:
+        try:
+            _git(worktree_path, "rebase", "--abort")
+        except RuntimeError:
+            pass
+        return IntegrationResult(False, None, "rebase conflict")
+
+    if not run_check(check_cmd, worktree_path).passed:
+        return IntegrationResult(False, None, "check failed after rebase")
+
+    try:
+        _git(repo_path, "merge", "--ff-only", branch)
+    except RuntimeError as exc:
+        return IntegrationResult(False, None, f"merge failed: {exc}")
+
+    return IntegrationResult(True, _git(repo_path, "rev-parse", base_branch), "merged")
+
+
 def run_slice(
     sl: Slice,
     *,

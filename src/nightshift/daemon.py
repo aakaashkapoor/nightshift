@@ -14,13 +14,15 @@ from typing import Callable
 
 from .config import Config, RepoConfig
 from .executor import Executor
-from .pipeline import SliceResult, run_slice
+from .pipeline import SliceResult, integrate_branch, run_slice
 from .scheduler import Dag
 from .slice import Slice
 from .source import LocalMdSource
 from .worktree import WorktreeManager
 
 IN_PROGRESS = "in-progress"
+DONE = "done"
+BLOCKED = "blocked"
 
 
 class Daemon:
@@ -75,8 +77,32 @@ class Daemon:
                 sl.id, "blocked", 0, None, self.worktrees.branch_for(sl.id), f"error: {exc}"
             )
 
+    def _integrate(self, work: SliceResult) -> SliceResult:
+        """Serial merge-train step for one committed branch (SPEC §6)."""
+        if work.status != DONE:  # Work itself failed -> nothing to integrate
+            self.source.set_status(work.slice_id, work.status)
+            return work
+        result = integrate_branch(
+            repo_path=self.repo_cfg.path,
+            worktree_path=self.worktrees.path_for(work.slice_id),
+            branch=work.branch,
+            base_branch=self.repo_cfg.base_branch,
+            check_cmd=self.repo_cfg.check,
+        )
+        if result.merged:
+            self.worktrees.teardown(work.slice_id)
+            self.source.set_status(work.slice_id, DONE)
+            return SliceResult(
+                work.slice_id, DONE, work.attempts, result.commit, work.branch, "merged"
+            )
+        self.worktrees.preserve(work.slice_id)
+        self.source.set_status(work.slice_id, BLOCKED)
+        return SliceResult(
+            work.slice_id, BLOCKED, work.attempts, work.commit, work.branch, result.detail
+        )
+
     def tick(self) -> list[SliceResult]:
-        """One pass: run a non-overlapping batch of runnable slices in parallel."""
+        """One pass: parallel Work on a non-overlapping batch, then a serial merge-train."""
         slices = self.source.list_all()
         if not slices:
             return []
@@ -85,11 +111,11 @@ class Daemon:
             return []
         for sl in batch:
             self.source.set_status(sl.id, IN_PROGRESS)
+        # Work: parallel, each in its own worktree.
         with ThreadPoolExecutor(max_workers=self.max_parallel) as pool:
-            results = list(pool.map(self._run_one, batch))
-        for result in results:
-            self.source.set_status(result.slice_id, result.status)
-        return results
+            work_results = list(pool.map(self._run_one, batch))
+        # Ship: serial merge-train — one branch integrates at a time.
+        return [self._integrate(work) for work in work_results]
 
     def run_forever(
         self,

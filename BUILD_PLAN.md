@@ -113,10 +113,12 @@ Next up: **Phase 2** (always-running daemon + parallelism + merge-train).
   `ThreadPoolExecutor` in `tick`. 7 new tests (parallel run, cap, overlap
   serialize, non-overlap together, scope-hint parsing). Test-first. 62 total.
 
-- [ ] **2.5 Serial merge-train (Ship proper)**
-  - **Goal:** integrate branches one at a time — rebase onto `main`, re-run check,
-    merge; children start only after parents merge.
-  - **Done when:** two slices land as two clean commits on `main`, no corruption.
+- [x] **2.5 Serial merge-train (Ship proper)** — done: `pipeline.integrate_branch`
+  (rebase onto base → re-check → ff-merge; `IntegrationResult`) + daemon `tick` now
+  does parallel Work then **serial** integration; merged → `done` + teardown,
+  conflict/red → `blocked` + preserve. 4 merge tests (lands on main, 2 commits,
+  dependent-sees-parent across ticks, rebase-conflict blocks collider). 66 total.
+  This closes the 2.3 cross-branch-dependency gap.
 
 - [ ] **2.6 Resolver agent (`nightshift-resolve`)**
   - **Goal:** on rebase conflict/red-check, spawn a resolver agent (both specs in

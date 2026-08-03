@@ -17,6 +17,7 @@ from .executor import Executor
 from .notifier import NullNotifier
 from .pipeline import SliceResult, integrate_branch, run_slice
 from .resolver import Resolver
+from .review import AgentReviewer
 from .scheduler import Dag
 from .slice import Slice
 from .source import LocalMdSource
@@ -41,6 +42,7 @@ class Daemon:
         resolve_attempts: int = 2,
         notifier=None,
         runtime=None,
+        reviewer=None,
     ):
         self.source = source
         self.repo_cfg = repo_cfg
@@ -52,6 +54,7 @@ class Daemon:
         self.resolve_attempts = resolve_attempts
         self.notifier = notifier or NullNotifier()
         self.runtime = runtime
+        self.reviewer = reviewer
 
     def _select_batch(self, runnable: list[Slice]) -> list[Slice]:
         """Up to max_parallel mutually non-overlapping slices.
@@ -81,6 +84,7 @@ class Daemon:
                 executor=self.executor,
                 base_branch=self.repo_cfg.base_branch,
                 max_attempts=self.max_attempts,
+                reviewer=self.reviewer,
             )
         except Exception as exc:  # a git/exec error must not kill the tick
             return SliceResult(
@@ -181,6 +185,7 @@ def run_daemon_cli(
         repo_cfg=repo_cfg,
         executor=ex,
         resolver=Resolver(ex),
+        reviewer=AgentReviewer(ex),
     )
     if once:
         return daemon.tick()

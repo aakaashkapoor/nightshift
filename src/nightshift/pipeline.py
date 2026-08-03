@@ -156,31 +156,51 @@ def run_slice(
     executor: Executor,
     base_branch: str = "main",
     max_attempts: int = 3,
+    reviewer=None,
+    review_rounds: int = 2,
 ) -> SliceResult:
     wt = worktrees.create(sl.id, base_branch)
+
+    # Work: iterate until the check is green (or the cap trips).
+    green = False
     attempts = 0
     last_session: str | None = None
-
     while attempts < max_attempts:
         attempts += 1
         exec_result = executor.execute(wt.path, sl, resume_session=last_session)
         last_session = exec_result.session_id or last_session
-        check = run_check(check_cmd, wt.path)
-        if check.passed:
-            commit = _commit_all(wt.path, _commit_message(sl))
-            sl.status = "done"
-            sl.attempts = attempts
-            return SliceResult(
-                sl.id, "done", attempts, commit, wt.branch, "check passed", last_session
-            )
+        if run_check(check_cmd, wt.path).passed:
+            green = True
+            break
 
-    sl.status = "blocked"
+    def _blocked(reason: str) -> SliceResult:
+        sl.status = "blocked"
+        sl.attempts = attempts
+        worktrees.preserve(sl.id)
+        return SliceResult(sl.id, "blocked", attempts, None, wt.branch, reason, last_session)
+
+    if not green:
+        return _blocked(f"check failed after {attempts} attempt(s)")
+
+    # Ship gate: always-on AI review (blocking findings loop back to a fix round).
+    if reviewer is not None:
+        for _ in range(review_rounds):
+            review = reviewer.review(wt.path, sl)
+            if not review.blocking:
+                break
+            from .review import fix_prompt
+
+            res = executor.execute_prompt(wt.path, fix_prompt(review.blocking), last_session)
+            last_session = res.session_id or last_session
+            if not run_check(check_cmd, wt.path).passed:
+                return _blocked("review fix broke the check")
+        else:
+            return _blocked("blocking review findings unresolved")
+
+    commit = _commit_all(wt.path, _commit_message(sl))
+    sl.status = "done"
     sl.attempts = attempts
-    worktrees.preserve(sl.id)
-    return SliceResult(
-        sl.id, "blocked", attempts, None, wt.branch,
-        f"check failed after {attempts} attempt(s)", last_session,
-    )
+    return SliceResult(sl.id, "done", attempts, commit, wt.branch, "check passed", last_session)
 
 
 def resume_slice(

@@ -150,10 +150,21 @@ Parallel Work + serial merge-train + agent conflict-resolution + escalation/noti
 
 ## Phase 3 — AI review + GitHub (v0.3)
 
-- [ ] `nightshift-review` always-on Ship step (blocking vs advisory findings).
-- [ ] `github-issues` source adapter (labels for state, `gh` auth).
-- [ ] PR flow: open PR, auto-merge after AI review, PR closes the issue.
-- [ ] The full visible GitHub story end-to-end.
+- [x] **3.1 AI review step (always-on)** — done: `review.py` `Reviewer`/`ReviewResult`/
+  `Finding` + `AgentReviewer` (headless Claude → JSON findings) + `parse_findings`/
+  `fix_prompt`. `run_slice` refactored: Work-until-green → review-until-clean
+  (blocking → fix round + re-check; advisory logged) → commit. Daemon +
+  `run_daemon_cli` wire a real `AgentReviewer`. 5 tests. 80 total.
+
+- [ ] **3.2 `github-issues` source adapter**
+  - **Goal:** `GitHubIssuesSource` (same shape as `LocalMdSource`) over `gh`, behind
+    an injectable command runner so it's unit-testable without a live repo.
+  - **Done when:** list/get/set-status map to gh calls; status ↔ labels.
+
+- [ ] **3.3 PR flow**
+  - **Goal:** open a PR for a slice, auto-merge after AI review, PR closes the issue
+    (`Closes #N`). Injectable gh runner; live flow needs a real remote.
+  - **Done when:** the PR-open + closes-issue commands are built & unit-tested.
 
 ---
 

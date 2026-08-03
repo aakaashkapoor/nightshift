@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .check import run_check
+from .config import Config
 from .executor import Executor
 from .slice import Slice
 from .worktree import WorktreeManager
@@ -83,4 +84,39 @@ def run_slice(
     return SliceResult(
         sl.id, "blocked", attempts, None, wt.branch,
         f"check failed after {attempts} attempt(s)",
+    )
+
+
+def _load_slice(repo_path: Path | str, slice_arg: str) -> Slice:
+    """Resolve a slice from a direct .md path or a repo `.slices/<id>.md`."""
+    direct = Path(slice_arg)
+    if direct.suffix == ".md" and direct.exists():
+        return Slice.load(direct)
+    candidate = Path(repo_path) / ".slices" / f"{slice_arg}.md"
+    if candidate.exists():
+        return Slice.load(candidate)
+    raise FileNotFoundError(f"slice not found: {slice_arg!r} (looked in {candidate})")
+
+
+def run_slice_cli(
+    slice_arg: str,
+    *,
+    repo: Path | str,
+    config_path: Path | str | None = None,
+    executor: Executor | None = None,
+) -> SliceResult:
+    """`nsh run` glue: load config, resolve repo + slice, run it.
+
+    ``executor`` defaults to a real headless-Claude Executor; tests inject a fake.
+    """
+    cfg = Config.load(config_path)
+    repo_cfg = cfg.repo(str(repo))
+    sl = _load_slice(repo_cfg.path, slice_arg)
+    return run_slice(
+        sl,
+        repo_path=repo_cfg.path,
+        check_cmd=repo_cfg.check,
+        worktrees=WorktreeManager(repo_cfg.path),
+        executor=executor if executor is not None else Executor(),
+        base_branch=repo_cfg.base_branch,
     )

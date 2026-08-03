@@ -76,10 +76,12 @@ works with a local headless Claude.
   tests with real git + a fake agent (success=1 commit beyond main containing the
   agent's file; retry-then-succeed; block+preserve). Test-first.
 
-- [ ] **1.8 `nsh run <slice>` end-to-end demo**
+- [~] **1.8 `nsh run <slice>` end-to-end demo**
   - **Goal:** the tweetable v0.1 moment — `nsh run slice-001` on a real toy repo.
-  - **Seed:** *"Wire `nsh run <slice_id>` to load config + slice and call
-    run_slice. Write a short DEMO.md walking through it on a sample repo."*
+  - Wiring DONE: `nsh run <slice> [--repo] [--config]` → `run_slice_cli`
+    (load config, resolve repo + slice by id-or-path, run). 3 tests. `--help` works.
+  - **Remaining: the LIVE smoke** — run it against a real toy repo + slice with a
+    real headless Claude (spends tokens; first real agent run). Then DEMO.md + GIF.
   - **Done when:** you can watch a slice go from spec → clean commit by hand.
   - 🎯 **This is the v0.1 milestone. Record a GIF here — it's the proof.**
 

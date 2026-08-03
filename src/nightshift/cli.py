@@ -42,3 +42,23 @@ def run(
         f"{result.status.upper()} {result.slice_id} [{result.branch}] — {result.detail}{commit}"
     )
     raise typer.Exit(code=0 if result.status == "done" else 1)
+
+
+@app.command()
+def daemon(
+    repo: Path = typer.Option(Path("."), "--repo", help="Target repo (default: current dir)"),
+    config: Optional[Path] = typer.Option(
+        None, "--config", help="Config file (default: ~/.nightshift/config.yaml)"
+    ),
+    once: bool = typer.Option(False, "--once", help="Run a single tick and exit"),
+    interval: float = typer.Option(30, "--interval", help="Poll interval in seconds"),
+) -> None:
+    """Run the Nightshift daemon: drain ready slices (Work -> check -> commit)."""
+    from nightshift.daemon import run_daemon_cli
+
+    results = run_daemon_cli(repo, config_path=config, once=once, interval=interval)
+    for r in results:
+        commit = f" ({r.commit[:8]})" if r.commit else ""
+        typer.echo(f"{r.status.upper()} {r.slice_id} [{r.branch}] — {r.detail}{commit}")
+    if not results:
+        typer.echo("no runnable slices")

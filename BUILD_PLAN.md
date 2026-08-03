@@ -100,10 +100,11 @@ Next up: **Phase 2** (always-running daemon + parallelism + merge-train).
   returns `ready` slices whose parents are all `done`, `parents`/`children`/
   `topo_order`. 8 tests. Test-first.
 
-- [ ] **2.3 Daemon loop skeleton (sequential)**
-  - **Goal:** scan source → pick runnable slices → run each via `run_slice` →
-    write status back. One tick, then a watch/poll loop. Sequential for now.
-  - **Done when:** dropping a `ready` slice in `.slices/` gets it run and marked `done`.
+- [x] **2.3 Daemon loop skeleton (sequential)** — done: `nightshift/daemon.py`
+  `Daemon` (`tick` = scan source → `Dag` → run each runnable via `run_slice` →
+  persist status; `run_forever` polls) + `run_daemon_cli` + `nsh daemon
+  [--once] [--interval]`. 5 tests (runs ready, only-runnable, blocked, run_forever
+  N ticks, CLI once). Test-first. NOTE: cross-branch deps need the merge-train (2.5).
 
 - [ ] **2.4 Parallel worker pool + scope-overlap safety net**
   - **Goal:** run up to `max_parallel` runnable roots concurrently, each in its own

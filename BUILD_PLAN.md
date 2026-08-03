@@ -163,10 +163,15 @@ Parallel Work + serial merge-train + agent conflict-resolution + escalation/noti
   ready-filter, label edits, close-on-done, blocked+comment). 85 total. Live gh
   calls untested (need a real remote).
 
-- [ ] **3.3 PR flow**
-  - **Goal:** open a PR for a slice, auto-merge after AI review, PR closes the issue
-    (`Closes #N`). Injectable gh runner; live flow needs a real remote.
-  - **Done when:** the PR-open + closes-issue commands are built & unit-tested.
+- [x] **3.3 PR flow** — done: `pr.py` `GitHubPR` (push + `gh pr create` +
+  `gh pr merge --auto`), `build_pr_body` (`Closes #N` for github slices),
+  `open_pr_for_slice` (auto-merge vs leave-open for human review). 6 tests with
+  fake git+gh runners. 91 total. Live PR flow needs a real remote.
+
+---
+
+### ✅ PHASE 3 COMPLETE (v0.3, code) — AI review + GitHub adapters + PR flow.
+Live gh/PR paths await a real remote. Next: **Phase 4** (concierge + distribution).
 
 ---
 

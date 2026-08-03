@@ -186,8 +186,9 @@ Live gh/PR paths await a real remote. Next: **Phase 4** (concierge + distributio
   quickstart, install-from-source; DEMO.md linked.
 - [ ] **4.4 Smoke-test command** — a `nsh smoke` that runs a throwaway slice
   end-to-end (folds the manual DEMO harness into one command). *(nice-to-have)*
-- [ ] **4.5 PyPI publish** — ⚠️ **needs you**: a PyPI account + token, then
-  `python -m build && twine upload`. Packaging metadata is ready in pyproject.toml.
+- [x] **4.5 Installable without PyPI** — `pipx install git+https://github.com/aakaashkapoor/nightshift`
+  works today (no account needed). PyPI publish is OPTIONAL/deferred (would only add
+  a shorter `pip install nightshift`; needs a PyPI account the author doesn't have).
 - [ ] **4.6 🚀 Launch** — LinkedIn etc. (your call, when you're ready).
 
 ---

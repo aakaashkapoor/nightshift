@@ -60,15 +60,20 @@ Config lives in `~/.nightshift/config.yaml` (see [examples/config.yaml](./exampl
 one central file with global defaults plus a per-repo entry (each repo's own
 `check`). Slices are `.slices/*.md` files *or* GitHub issues.
 
-## Install (from source, pre-PyPI)
+## Install
+
+Straight from GitHub — no PyPI needed:
+
+```bash
+pipx install git+https://github.com/aakaashkapoor/nightshift
+```
+
+Or for local development:
 
 ```bash
 git clone https://github.com/aakaashkapoor/nightshift && cd nightshift
 pipx install -e .          # or: pip install -e ".[dev]"
 ```
-
-> The intended one-liner once published (v0.4):
-> `pipx install nightshift && nightshift setup`
 
 ## Docs
 

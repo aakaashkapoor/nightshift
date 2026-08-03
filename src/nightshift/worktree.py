@@ -74,6 +74,14 @@ class WorktreeManager:
         """Leave the worktree in place (for a blocked slice); return its handle."""
         return Worktree(slice_id, self.path_for(slice_id), self.branch_for(slice_id))
 
+    def attach(self, slice_id: str) -> Worktree:
+        """Handle to an EXISTING worktree (for resume); raise if it's gone."""
+        if not self.exists(slice_id):
+            raise FileNotFoundError(
+                f"no preserved worktree for {slice_id!r} at {self.path_for(slice_id)}"
+            )
+        return Worktree(slice_id, self.path_for(slice_id), self.branch_for(slice_id))
+
     def list_slices(self) -> list[str]:
         if not self.root.exists():
             return []

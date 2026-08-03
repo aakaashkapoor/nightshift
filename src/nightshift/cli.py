@@ -45,6 +45,25 @@ def run(
 
 
 @app.command()
+def resume(
+    slice: str = typer.Argument(..., help="Blocked slice id to resume"),
+    repo: Path = typer.Option(Path("."), "--repo", help="Target repo (default: current dir)"),
+    config: Optional[Path] = typer.Option(
+        None, "--config", help="Config file (default: ~/.nightshift/config.yaml)"
+    ),
+) -> None:
+    """Resume a blocked slice on its preserved worktree (never from scratch)."""
+    from nightshift.pipeline import run_resume_cli
+
+    result = run_resume_cli(slice, repo=repo, config_path=config)
+    commit = f" ({result.commit[:8]})" if result.commit else ""
+    typer.echo(
+        f"{result.status.upper()} {result.slice_id} [{result.branch}] — {result.detail}{commit}"
+    )
+    raise typer.Exit(code=0 if result.status == "done" else 1)
+
+
+@app.command()
 def daemon(
     repo: Path = typer.Option(Path("."), "--repo", help="Target repo (default: current dir)"),
     config: Optional[Path] = typer.Option(

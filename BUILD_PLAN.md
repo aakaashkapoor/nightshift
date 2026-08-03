@@ -134,10 +134,17 @@ Next up: **Phase 2** (always-running daemon + parallelism + merge-train).
   = preserve worktree + note + notify; blocked slice is ejected (no longer `ready`
   so the queue keeps moving). 2 tests (note+notify, resolver-cap blocks). 69 total.
 
-- [ ] **2.8 Resumability + runtime.json**
-  - **Goal:** `nsh resume <slice>` re-attaches to a preserved worktree and continues
-    (resume the agent's session); `runtime.json` ephemera rebuilt on restart.
-  - **Done when:** a blocked slice resumes and finishes without redoing prior work.
+- [x] **2.8 Resumability + runtime.json** — done: `runtime.py` `Runtime`
+  (record/get/forget/reconcile; rebuildable on restart), `WorktreeManager.attach`,
+  `pipeline.resume_slice` (resumes agent session on the preserved worktree) +
+  `run_resume_cli` (resume → integrate) + `nsh resume`, `SliceResult.session_id`
+  threaded through, daemon records/forgets/reconciles runtime. 6 tests. 75 total.
+
+---
+
+### ✅ PHASE 2 COMPLETE (v0.2) — the full autonomous daemon works.
+Parallel Work + serial merge-train + agent conflict-resolution + escalation/notify
++ resumable blocked slices. Next: **Phase 3** (AI review + GitHub).
 
 ---
 

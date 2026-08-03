@@ -40,6 +40,7 @@ class Daemon:
         resolver=None,
         resolve_attempts: int = 2,
         notifier=None,
+        runtime=None,
     ):
         self.source = source
         self.repo_cfg = repo_cfg
@@ -50,6 +51,7 @@ class Daemon:
         self.resolver = resolver
         self.resolve_attempts = resolve_attempts
         self.notifier = notifier or NullNotifier()
+        self.runtime = runtime
 
     def _select_batch(self, runnable: list[Slice]) -> list[Slice]:
         """Up to max_parallel mutually non-overlapping slices.
@@ -91,7 +93,8 @@ class Daemon:
         self.source.set_blocked(work.slice_id, reason)
         self.notifier.notify("blocked", f"{work.slice_id}: {reason}")
         return SliceResult(
-            work.slice_id, BLOCKED, work.attempts, work.commit, work.branch, reason
+            work.slice_id, BLOCKED, work.attempts, work.commit, work.branch,
+            reason, work.session_id,
         )
 
     def _integrate(self, work: SliceResult) -> SliceResult:
@@ -111,7 +114,8 @@ class Daemon:
             self.worktrees.teardown(work.slice_id)
             self.source.set_status(work.slice_id, DONE)
             return SliceResult(
-                work.slice_id, DONE, work.attempts, result.commit, work.branch, "merged"
+                work.slice_id, DONE, work.attempts, result.commit, work.branch,
+                "merged", work.session_id,
             )
         return self._block(work, result.detail)
 
@@ -120,6 +124,10 @@ class Daemon:
         slices = self.source.list_all()
         if not slices:
             return []
+        if self.runtime is not None:
+            self.runtime.reconcile(
+                known_slice_ids={s.id for s in slices}, worktrees=self.worktrees
+            )
         batch = self._select_batch(Dag.build(slices).runnable())
         if not batch:
             return []
@@ -129,7 +137,16 @@ class Daemon:
         with ThreadPoolExecutor(max_workers=self.max_parallel) as pool:
             work_results = list(pool.map(self._run_one, batch))
         # Ship: serial merge-train — one branch integrates at a time.
-        return [self._integrate(work) for work in work_results]
+        results = [self._integrate(work) for work in work_results]
+        if self.runtime is not None:
+            for r in results:
+                if r.status == DONE:
+                    self.runtime.forget(r.slice_id)
+                else:
+                    self.runtime.record(
+                        r.slice_id, session_id=r.session_id, branch=r.branch
+                    )
+        return results
 
     def run_forever(
         self,

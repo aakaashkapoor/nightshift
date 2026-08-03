@@ -20,7 +20,9 @@ from .check import run_check
 from .config import Config
 from .executor import Executor
 from .gitutil import LOCK as _GIT_LOCK
+from .runtime import Runtime
 from .slice import Slice
+from .source import LocalMdSource
 from .worktree import WorktreeManager
 
 
@@ -32,6 +34,7 @@ class SliceResult:
     commit: str | None
     branch: str
     detail: str
+    session_id: str | None = None  # last agent session (for resume, SPEC §7)
 
 
 def _git(cwd: Path | str, *args: str) -> str:
@@ -61,6 +64,15 @@ def _commit_message(sl: Slice) -> str:
 
 def _commit_all(worktree_path: Path, message: str) -> str:
     _git(worktree_path, "add", "-A")
+    _git(worktree_path, "commit", "-m", message)
+    return _git(worktree_path, "rev-parse", "HEAD")
+
+
+def _commit_if_changes(worktree_path: Path, message: str) -> str:
+    """Commit staged changes if any; otherwise return the current HEAD (for resume)."""
+    _git(worktree_path, "add", "-A")
+    if _git_ok(worktree_path, "diff", "--cached", "--quiet"):  # rc 0 = nothing staged
+        return _git(worktree_path, "rev-parse", "HEAD")
     _git(worktree_path, "commit", "-m", message)
     return _git(worktree_path, "rev-parse", "HEAD")
 
@@ -152,20 +164,53 @@ def run_slice(
     while attempts < max_attempts:
         attempts += 1
         exec_result = executor.execute(wt.path, sl, resume_session=last_session)
-        last_session = exec_result.session_id
+        last_session = exec_result.session_id or last_session
         check = run_check(check_cmd, wt.path)
         if check.passed:
             commit = _commit_all(wt.path, _commit_message(sl))
             sl.status = "done"
             sl.attempts = attempts
-            return SliceResult(sl.id, "done", attempts, commit, wt.branch, "check passed")
+            return SliceResult(
+                sl.id, "done", attempts, commit, wt.branch, "check passed", last_session
+            )
 
     sl.status = "blocked"
     sl.attempts = attempts
     worktrees.preserve(sl.id)
     return SliceResult(
         sl.id, "blocked", attempts, None, wt.branch,
-        f"check failed after {attempts} attempt(s)",
+        f"check failed after {attempts} attempt(s)", last_session,
+    )
+
+
+def resume_slice(
+    sl: Slice,
+    *,
+    check_cmd: str,
+    worktrees: WorktreeManager,
+    executor: Executor,
+    session_id: str | None = None,
+    max_attempts: int = 3,
+) -> SliceResult:
+    """Resume a blocked slice on its PRESERVED worktree (SPEC §7) — never from scratch.
+
+    Attaches to the existing worktree, resumes the agent's session, and re-runs the
+    Work→check loop until green (then commits) or the cap trips.
+    """
+    wt = worktrees.attach(sl.id)
+    attempts = 0
+    last_session = session_id
+    while attempts < max_attempts:
+        attempts += 1
+        exec_result = executor.execute(wt.path, sl, resume_session=last_session)
+        last_session = exec_result.session_id or last_session
+        if run_check(check_cmd, wt.path).passed:
+            commit = _commit_if_changes(wt.path, _commit_message(sl))
+            return SliceResult(
+                sl.id, "done", attempts, commit, wt.branch, "resumed & checked", last_session
+            )
+    return SliceResult(
+        sl.id, "blocked", attempts, None, wt.branch, "still blocked after resume", last_session
     )
 
 
@@ -201,4 +246,58 @@ def run_slice_cli(
         worktrees=WorktreeManager(repo_cfg.path),
         executor=executor if executor is not None else Executor(),
         base_branch=repo_cfg.base_branch,
+    )
+
+
+def run_resume_cli(
+    slice_id: str,
+    *,
+    repo,
+    config_path=None,
+    executor: Executor | None = None,
+    runtime_path=None,
+) -> SliceResult:
+    """`nsh resume` glue: resume a blocked slice on its worktree, then integrate."""
+    cfg = Config.load(config_path)
+    repo_cfg = cfg.repo(str(repo))
+    source = LocalMdSource(repo_cfg.path)
+    sl = source.get(slice_id)
+    if sl is None:
+        raise FileNotFoundError(f"no slice {slice_id!r} in {source.root}")
+
+    worktrees = WorktreeManager(repo_cfg.path)
+    runtime = Runtime(runtime_path)
+    ex = executor if executor is not None else Executor()
+
+    resumed = resume_slice(
+        sl,
+        check_cmd=repo_cfg.check,
+        worktrees=worktrees,
+        executor=ex,
+        session_id=runtime.get(slice_id).get("session_id"),
+    )
+    if resumed.status != "done":
+        source.set_blocked(slice_id, resumed.detail)
+        runtime.record(slice_id, session_id=resumed.session_id, branch=resumed.branch)
+        return resumed
+
+    integ = integrate_branch(
+        repo_path=repo_cfg.path,
+        worktree_path=worktrees.path_for(slice_id),
+        branch=resumed.branch,
+        base_branch=repo_cfg.base_branch,
+        check_cmd=repo_cfg.check,
+    )
+    if integ.merged:
+        worktrees.teardown(slice_id)
+        source.set_status(slice_id, "done")
+        runtime.forget(slice_id)
+        return SliceResult(
+            slice_id, "done", resumed.attempts, integ.commit, resumed.branch,
+            "resumed & merged", resumed.session_id,
+        )
+    source.set_blocked(slice_id, integ.detail)
+    return SliceResult(
+        slice_id, "blocked", resumed.attempts, resumed.commit, resumed.branch,
+        integ.detail, resumed.session_id,
     )

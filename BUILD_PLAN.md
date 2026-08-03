@@ -58,15 +58,16 @@ works with a local headless Claude.
   `timed_out`. 4 tests (pass+output, fail+stderr+returncode, runs-in-cwd,
   timeout) — cross-platform. Test-first.
 
-- [ ] **1.6 Headless Claude executor** *(the core)*
-  - **Goal:** spawn a local headless Claude in a worktree, hand it the slice spec,
-    let it implement, without stalling on prompts.
-  - **Seed:** *"Implement an executor that launches headless Claude Code in a
-    worktree with the slice's Goal/Acceptance as the task, permission-bypass on so
-    it never blocks. Capture logs. Return when the agent finishes or errors.
-    Confirm the exact non-interactive invocation (SDK vs `claude -p`) — ask the
-    claude-code-guide agent if unsure."*
-  - **Done when:** on a toy repo + toy slice, the agent actually edits files.
+- [x] **1.6 Headless Claude executor** *(the core)* — logic done & tested;
+  live smoke deferred to 1.8. `nightshift/executor.py` `Executor` + `ExecResult`.
+  Invocation confirmed for CC 2.1.220: `claude -p --output-format json
+  --permission-mode bypassPermissions [--model X] [--resume <session_id>]`,
+  **prompt via stdin** (no Windows quoting), cwd = worktree. Parses JSON →
+  `session_id` (for resume, SPEC §7) + result. Subprocess call behind an injectable
+  `runner`; 7 unit tests (prompt guardrails, argv defaults/model/resume, cwd+stdin
+  passing, JSON parse, failure, non-JSON). Default runner handles Windows `.cmd`
+  shim. **Chose CLI subprocess over `claude-agent-sdk`** (testability + version
+  robustness; SDK is a clean future swap). *Not yet run against a live Claude.*
 
 - [ ] **1.7 Work→Ship for a single slice (no rebase yet)**
   - **Goal:** wire it together: create worktree → run executor (Work) → run check →

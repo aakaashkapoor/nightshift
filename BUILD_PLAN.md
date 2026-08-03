@@ -156,10 +156,12 @@ Parallel Work + serial merge-train + agent conflict-resolution + escalation/noti
   (blocking → fix round + re-check; advisory logged) → commit. Daemon +
   `run_daemon_cli` wire a real `AgentReviewer`. 5 tests. 80 total.
 
-- [ ] **3.2 `github-issues` source adapter**
-  - **Goal:** `GitHubIssuesSource` (same shape as `LocalMdSource`) over `gh`, behind
-    an injectable command runner so it's unit-testable without a live repo.
-  - **Done when:** list/get/set-status map to gh calls; status ↔ labels.
+- [x] **3.2 `github-issues` source adapter** — done: `github.py`
+  `GitHubIssuesSource` (list_all/list_ready/get/set_status/set_blocked) over an
+  injectable `gh` runner; status ↔ `nightshift:*` labels (done = closed),
+  `Depends-on: #N` parsed to deps, unmanaged issues skipped. 5 tests (mapping,
+  ready-filter, label edits, close-on-done, blocked+comment). 85 total. Live gh
+  calls untested (need a real remote).
 
 - [ ] **3.3 PR flow**
   - **Goal:** open a PR for a slice, auto-merge after AI review, PR closes the issue

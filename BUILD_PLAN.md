@@ -95,10 +95,10 @@ Next up: **Phase 2** (always-running daemon + parallelism + merge-train).
   `LocalMdSource`. `list_all`/`list_ready` (scans `.slices/*.md`, skips non-slices),
   `get`, `path_for`, `save`, `set_status` (write-back). 4 tests. Test-first.
 
-- [ ] **2.2 Dependency DAG + scheduler**
-  - **Goal:** from a set of slices build the `depends_on` DAG; compute which are
-    *runnable now* (all parents `done`), detect cycles.
-  - **Done when:** given slices with deps, returns the correct runnable set; rejects cycles.
+- [x] **2.2 Dependency DAG + scheduler** — done: `nightshift/scheduler.py` `Dag`.
+  `build` validates deps exist + acyclic (Kahn's; `CycleError`), `runnable()`
+  returns `ready` slices whose parents are all `done`, `parents`/`children`/
+  `topo_order`. 8 tests. Test-first.
 
 - [ ] **2.3 Daemon loop skeleton (sequential)**
   - **Goal:** scan source → pick runnable slices → run each via `run_slice` →

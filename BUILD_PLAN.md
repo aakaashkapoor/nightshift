@@ -40,14 +40,11 @@ works with a local headless Claude.
   (fields, defaults, status round-trip preserves body, file load/save, rejects
   missing frontmatter). Built test-first.
 
-- [ ] **1.3 Config loader**
-  - **Goal:** load `~/.nightshift/config.yaml` (SPEC §8) with global defaults +
-    per-repo entries; resolve the `check` command for a given repo path.
-  - **Seed:** *"Implement config loading from ~/.nightshift/config.yaml with the
-    SPEC §8 shape. Given a repo path, return its resolved settings (check,
-    base_branch, source, pr). Support ${VAR} env interpolation. Sensible errors if
-    a repo isn't registered."*
-  - **Done when:** given a sample config + repo, returns the right `check` string.
+- [x] **1.3 Config loader** — done: `nightshift/config.py` `Config` +
+  `RepoConfig`. Loads central `~/.nightshift/config.yaml` (SPEC §8), resolves a
+  repo by **name or filesystem path**, merges global defaults + per-repo settings
+  (check, source, base_branch, pr, max_parallel…), `${VAR}` env interpolation,
+  `UnknownRepoError`/missing-check/missing-file errors. 9 tests, test-first.
 
 - [ ] **1.4 Worktree manager**
   - **Goal:** create an isolated worktree + branch for a slice; tear it down;

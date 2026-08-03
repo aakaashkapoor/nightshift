@@ -91,16 +91,44 @@ Next up: **Phase 2** (always-running daemon + parallelism + merge-train).
 
 ## Phase 2 — Autonomy & parallelism (v0.2)
 
-Expand into granular tasks when we reach it. High-level:
+- [x] **2.1 Slice source / discovery** — done: `nightshift/source.py`
+  `LocalMdSource`. `list_all`/`list_ready` (scans `.slices/*.md`, skips non-slices),
+  `get`, `path_for`, `save`, `set_status` (write-back). 4 tests. Test-first.
 
-- [ ] Always-running daemon (filesystem watch on `.slices/`, ~30s poll hook).
-- [ ] DAG builder from `depends_on`; schedule roots; `max_parallel: 5`.
-- [ ] Scope-hint overlap safety net (serialize colliding "independent" roots).
-- [ ] Serial **merge train**: rebase onto `main`, re-check, merge, one at a time.
-- [ ] `nightshift-resolve` conflict/resolver agent (edits code, both specs in ctx).
-- [ ] Escalation cap (N=2) → blocked + preserve worktree + eject + note in issue.
-- [ ] Resumability: `nsh resume <slice>` attaches to preserved worktree.
-- [ ] `runtime.json` ephemera + restart reconciliation.
+- [ ] **2.2 Dependency DAG + scheduler**
+  - **Goal:** from a set of slices build the `depends_on` DAG; compute which are
+    *runnable now* (all parents `done`), detect cycles.
+  - **Done when:** given slices with deps, returns the correct runnable set; rejects cycles.
+
+- [ ] **2.3 Daemon loop skeleton (sequential)**
+  - **Goal:** scan source → pick runnable slices → run each via `run_slice` →
+    write status back. One tick, then a watch/poll loop. Sequential for now.
+  - **Done when:** dropping a `ready` slice in `.slices/` gets it run and marked `done`.
+
+- [ ] **2.4 Parallel worker pool + scope-overlap safety net**
+  - **Goal:** run up to `max_parallel` runnable roots concurrently, each in its own
+    worktree; serialize roots whose `scope hints` collide.
+  - **Done when:** N independent slices run concurrently; colliding ones serialize.
+
+- [ ] **2.5 Serial merge-train (Ship proper)**
+  - **Goal:** integrate branches one at a time — rebase onto `main`, re-run check,
+    merge; children start only after parents merge.
+  - **Done when:** two slices land as two clean commits on `main`, no corruption.
+
+- [ ] **2.6 Resolver agent (`nightshift-resolve`)**
+  - **Goal:** on rebase conflict/red-check, spawn a resolver agent (both specs in
+    context) that edits code to a clean, green merge.
+  - **Done when:** an induced conflict is resolved by the agent and merges green.
+
+- [ ] **2.7 Escalation cap + blocked/notify**
+  - **Goal:** cap resolver attempts (N=2) → `blocked` + preserve worktree + eject
+    from queue + write note into the issue + optional notifier hook.
+  - **Done when:** an unresolvable slice blocks cleanly and the queue keeps moving.
+
+- [ ] **2.8 Resumability + runtime.json**
+  - **Goal:** `nsh resume <slice>` re-attaches to a preserved worktree and continues
+    (resume the agent's session); `runtime.json` ephemera rebuilt on restart.
+  - **Done when:** a blocked slice resumes and finishes without redoing prior work.
 
 ---
 

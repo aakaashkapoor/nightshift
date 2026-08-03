@@ -76,14 +76,16 @@ works with a local headless Claude.
   tests with real git + a fake agent (success=1 commit beyond main containing the
   agent's file; retry-then-succeed; block+preserve). Test-first.
 
-- [~] **1.8 `nsh run <slice>` end-to-end demo**
-  - **Goal:** the tweetable v0.1 moment — `nsh run slice-001` on a real toy repo.
-  - Wiring DONE: `nsh run <slice> [--repo] [--config]` → `run_slice_cli`
-    (load config, resolve repo + slice by id-or-path, run). 3 tests. `--help` works.
-  - **Remaining: the LIVE smoke** — run it against a real toy repo + slice with a
-    real headless Claude (spends tokens; first real agent run). Then DEMO.md + GIF.
-  - **Done when:** you can watch a slice go from spec → clean commit by hand.
-  - 🎯 **This is the v0.1 milestone. Record a GIF here — it's the proof.**
+- [x] **1.8 `nsh run <slice>` end-to-end demo** — DONE & PROVEN LIVE. 🎯
+  `nsh run <slice> [--repo] [--config]` → `run_slice_cli`. **Live smoke passed:** a
+  real headless Claude wrote `greet.py`, `python check.py` gated it, one clean
+  commit `49bfdd9` (only greet.py, informative message) landed on
+  `nightshift/slice-hello`. Walkthrough in [DEMO.md](./DEMO.md).
+
+---
+
+### ✅ v0.1 MILESTONE REACHED — the single-slice engine works with a real agent.
+Next up: **Phase 2** (always-running daemon + parallelism + merge-train).
 
 ---
 

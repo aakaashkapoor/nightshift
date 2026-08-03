@@ -52,13 +52,11 @@ works with a local headless Claude.
   `list_slices`, `exists`. 6 tests against a real throwaway repo (create/isolate/
   teardown/preserve/list/branch-from-tip) — pass on Windows. Test-first.
 
-- [ ] **1.5 Check runner**
-  - **Goal:** run a repo's `check` command in a worktree, capture pass/fail +
-    output.
-  - **Seed:** *"Implement a check runner that executes the configured check command
-    in a given worktree, returns (passed: bool, output: str), with a timeout.
-    Cross-platform shell handling."*
-  - **Done when:** returns True on a passing check, False + output on a failing one.
+- [x] **1.5 Check runner** — done: `nightshift/check.py` `run_check` +
+  `CheckResult`. Runs the per-repo check through the shell in a given cwd,
+  captures combined stdout+stderr, pass/fail via returncode, timeout →
+  `timed_out`. 4 tests (pass+output, fail+stderr+returncode, runs-in-cwd,
+  timeout) — cross-platform. Test-first.
 
 - [ ] **1.6 Headless Claude executor** *(the core)*
   - **Goal:** spawn a local headless Claude in a worktree, hand it the slice spec,

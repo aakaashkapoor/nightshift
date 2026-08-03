@@ -31,6 +31,7 @@ Repository = "https://github.com/aakaashkapoor/nightshift"
 [project.scripts]
 nsh = "nightshift.cli:app"
 nightshift = "nightshift.cli:app"
+nsh-check = "nightshift._gate:main"
 
 [tool.hatch.version]
 path = "src/nightshift/__init__.py"
@@ -74,6 +75,7 @@ warn_unreachable = true
 [tool.coverage.run]
 source = ["nightshift"]
 branch = true
+omit = ["*/nightshift/_gate.py"]  # the gate orchestrates the other tools; not covered
 
 [tool.coverage.report]
 fail_under = 100

@@ -1,8 +1,8 @@
-#!/usr/bin/env python
-"""The Nightshift quality gate — run locally on every change.
+"""The `nsh-check` quality gate — run from the repo root before committing.
 
 Runs, in order: Ruff lint, Ruff format-check, mypy, and pytest with 100% branch
-coverage. Exits non-zero if any step fails. This is the repo's own `check` command.
+coverage. Exits non-zero if any step fails. Excluded from coverage itself (it only
+orchestrates other tools). Invoke as ``nsh-check`` or ``python -m nightshift._gate``.
 """
 
 from __future__ import annotations

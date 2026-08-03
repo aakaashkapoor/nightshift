@@ -80,7 +80,7 @@ pipx install -e .          # or: pip install -e ".[dev]"
 Every change is held to a pristine bar — run the full gate locally:
 
 ```bash
-python scripts/check.py     # or: make check
+nsh-check          # or: python -m nightshift._gate
 ```
 
 It runs **Ruff** (lint + format), **mypy** (types), and **pytest with 100% branch

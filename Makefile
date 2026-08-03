@@ -2,7 +2,7 @@
 
 # The full quality gate — run on every change (ruff + mypy + 100% coverage).
 check:
-	python scripts/check.py
+	nsh-check
 
 test:
 	pytest -q

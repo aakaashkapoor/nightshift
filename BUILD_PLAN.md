@@ -46,14 +46,11 @@ works with a local headless Claude.
   (check, source, base_branch, pr, max_parallel…), `${VAR}` env interpolation,
   `UnknownRepoError`/missing-check/missing-file errors. 9 tests, test-first.
 
-- [ ] **1.4 Worktree manager**
-  - **Goal:** create an isolated worktree + branch for a slice; tear it down;
-    preserve it on failure.
-  - **Seed:** *"Implement a worktree manager: `create(slice_id, base_branch)` makes
-    a git worktree on a new branch `nightshift/<slice_id>`; `teardown` removes it;
-    `preserve` leaves it for inspection. Cross-platform (Windows + POSIX). Tests
-    against a throwaway repo."*
-  - **Done when:** can create/list/teardown worktrees on a test repo, on Windows.
+- [x] **1.4 Worktree manager** — done: `nightshift/worktree.py` `WorktreeManager`
+  + `Worktree`. `create` (worktree on branch `nightshift/<id>`), `teardown`
+  (remove worktree + delete branch), `preserve` (leave for a blocked slice),
+  `list_slices`, `exists`. 6 tests against a real throwaway repo (create/isolate/
+  teardown/preserve/list/branch-from-tip) — pass on Windows. Test-first.
 
 - [ ] **1.5 Check runner**
   - **Goal:** run a repo's `check` command in a worktree, capture pass/fail +

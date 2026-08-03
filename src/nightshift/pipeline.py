@@ -44,6 +44,16 @@ def _git(cwd: Path | str, *args: str) -> str:
     return result.stdout.strip()
 
 
+def _git_ok(cwd: Path | str, *args: str) -> bool:
+    with _GIT_LOCK:
+        return (
+            subprocess.run(
+                ["git", "-C", str(cwd), *args], capture_output=True, text=True
+            ).returncode
+            == 0
+        )
+
+
 def _commit_message(sl: Slice) -> str:
     # Informative, outcome-focused subject; body ties it to the slice.
     return f"{sl.title}\n\nImplements slice {sl.id}."
@@ -62,6 +72,32 @@ class IntegrationResult:
     detail: str
 
 
+def _has_conflict_markers(cwd: Path | str) -> bool:
+    """True if staged content still has leftover conflict markers (ignores whitespace)."""
+    with _GIT_LOCK:
+        result = subprocess.run(
+            ["git", "-C", str(cwd), "diff", "--cached", "--check"],
+            capture_output=True,
+            text=True,
+        )
+    return "conflict marker" in result.stdout
+
+
+def _resolve_conflicted_rebase(worktree_path, resolver, attempts: int) -> bool:
+    """Let the resolver agent edit the worktree, then continue the rebase.
+
+    Returns True once the rebase completes cleanly (no leftover conflict markers).
+    """
+    for _ in range(attempts):
+        resolver(worktree_path)
+        _git(worktree_path, "add", "-A")
+        if _has_conflict_markers(worktree_path):
+            continue  # markers remain -> let the resolver try again
+        if _git_ok(worktree_path, "-c", "core.editor=true", "rebase", "--continue"):
+            return True
+    return False
+
+
 def integrate_branch(
     *,
     repo_path: Path | str,
@@ -69,21 +105,24 @@ def integrate_branch(
     branch: str,
     base_branch: str,
     check_cmd: str,
+    resolver=None,
+    resolve_attempts: int = 2,
 ) -> IntegrationResult:
     """Serial merge-train step (SPEC §6): rebase onto base -> re-check -> ff-merge.
 
     Run one branch at a time so each rebase targets a *stationary* base. On a rebase
-    conflict or a post-rebase red check, returns ``merged=False`` (2.6's resolver
-    agent will hook in here); otherwise fast-forwards ``base_branch`` to the branch.
+    conflict, if a ``resolver`` agent is supplied it edits the worktree to a clean
+    merge (up to ``resolve_attempts`` tries); otherwise (or if unresolved) returns
+    ``merged=False``. Post-rebase, a red check also returns ``merged=False``.
     """
-    try:
-        _git(worktree_path, "rebase", base_branch)
-    except RuntimeError:
-        try:
-            _git(worktree_path, "rebase", "--abort")
-        except RuntimeError:
-            pass
-        return IntegrationResult(False, None, "rebase conflict")
+    if not _git_ok(worktree_path, "rebase", base_branch):
+        resolved = resolver is not None and _resolve_conflicted_rebase(
+            worktree_path, resolver, resolve_attempts
+        )
+        if not resolved:
+            _git_ok(worktree_path, "rebase", "--abort")
+            detail = "unresolved conflict" if resolver else "rebase conflict"
+            return IntegrationResult(False, None, detail)
 
     if not run_check(check_cmd, worktree_path).passed:
         return IntegrationResult(False, None, "check failed after rebase")

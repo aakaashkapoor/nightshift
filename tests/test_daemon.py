@@ -86,7 +86,22 @@ class ConflictAgent:
         return _ok()
 
 
-def _daemon(repo, tmp_path, agent, *, check="echo ok", max_attempts=3, max_parallel=5) -> Daemon:
+class StripResolver:
+    """Fake resolver: drops conflict-marker lines, keeping both sides' content."""
+
+    def __call__(self, worktree_path) -> None:
+        readme = Path(worktree_path, "README.md")
+        kept = [
+            line
+            for line in readme.read_text(encoding="utf-8").splitlines()
+            if not line.startswith(("<<<<<<<", "=======", ">>>>>>>"))
+        ]
+        readme.write_text("\n".join(kept) + "\n", encoding="utf-8")
+
+
+def _daemon(
+    repo, tmp_path, agent, *, check="echo ok", max_attempts=3, max_parallel=5, resolver=None
+) -> Daemon:
     return Daemon(
         source=LocalMdSource(repo),
         repo_cfg=RepoConfig(name="demo", path=repo, check=check, base_branch="main"),
@@ -94,6 +109,7 @@ def _daemon(repo, tmp_path, agent, *, check="echo ok", max_attempts=3, max_paral
         worktrees=WorktreeManager(repo, worktrees_root=tmp_path / "wts"),
         max_attempts=max_attempts,
         max_parallel=max_parallel,
+        resolver=resolver,
     )
 
 
@@ -209,6 +225,21 @@ def test_rebase_conflict_blocks_the_collider(repo, tmp_path) -> None:
     readme = _git(repo, "show", "main:README.md")
     assert "line-slice-001" in readme
     assert "line-slice-002" not in readme
+
+
+def test_resolver_resolves_conflict_and_merges(repo, tmp_path) -> None:
+    # Same conflict, but a resolver is supplied -> the collider is resolved & merged.
+    _write_slice(repo, "slice-001")
+    _write_slice(repo, "slice-002")
+    results = _daemon(
+        repo, tmp_path, ConflictAgent(), max_parallel=5, resolver=StripResolver()
+    ).tick()
+
+    by_id = {r.slice_id: r.status for r in results}
+    assert by_id["slice-001"] == "done"
+    assert by_id["slice-002"] == "done"  # no longer blocked
+    readme = _git(repo, "show", "main:README.md")
+    assert "line-slice-001" in readme and "line-slice-002" in readme
 
 
 # --- loop + CLI ---------------------------------------------------------------

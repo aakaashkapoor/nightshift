@@ -114,13 +114,17 @@ class Executor:
             f"{sl.body.strip()}\n"
         )
 
+    def execute_prompt(
+        self, cwd: Path | str, prompt: str, resume_session: str | None = None
+    ) -> ExecResult:
+        argv = self.build_argv(resume_session)
+        out = self.runner(argv, str(cwd), prompt)
+        return self._parse(out)
+
     def execute(
         self, cwd: Path | str, sl, resume_session: str | None = None
     ) -> ExecResult:
-        argv = self.build_argv(resume_session)
-        prompt = self.build_prompt(sl)
-        out = self.runner(argv, str(cwd), prompt)
-        return self._parse(out)
+        return self.execute_prompt(cwd, self.build_prompt(sl), resume_session)
 
     def _parse(self, out: RunOutput) -> ExecResult:
         session_id: str | None = None

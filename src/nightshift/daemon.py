@@ -15,6 +15,7 @@ from typing import Callable
 from .config import Config, RepoConfig
 from .executor import Executor
 from .pipeline import SliceResult, integrate_branch, run_slice
+from .resolver import Resolver
 from .scheduler import Dag
 from .slice import Slice
 from .source import LocalMdSource
@@ -35,6 +36,8 @@ class Daemon:
         worktrees: WorktreeManager | None = None,
         max_attempts: int = 3,
         max_parallel: int | None = None,
+        resolver=None,
+        resolve_attempts: int = 2,
     ):
         self.source = source
         self.repo_cfg = repo_cfg
@@ -42,6 +45,8 @@ class Daemon:
         self.worktrees = worktrees or WorktreeManager(repo_cfg.path)
         self.max_attempts = max_attempts
         self.max_parallel = max_parallel or repo_cfg.max_parallel
+        self.resolver = resolver
+        self.resolve_attempts = resolve_attempts
 
     def _select_batch(self, runnable: list[Slice]) -> list[Slice]:
         """Up to max_parallel mutually non-overlapping slices.
@@ -88,6 +93,8 @@ class Daemon:
             branch=work.branch,
             base_branch=self.repo_cfg.base_branch,
             check_cmd=self.repo_cfg.check,
+            resolver=self.resolver,
+            resolve_attempts=self.resolve_attempts,
         )
         if result.merged:
             self.worktrees.teardown(work.slice_id)
@@ -144,10 +151,12 @@ def run_daemon_cli(
     """`nsh daemon` glue: build a Daemon from config and tick once or run forever."""
     cfg = Config.load(config_path)
     repo_cfg = cfg.repo(str(repo))
+    ex = executor if executor is not None else Executor()
     daemon = Daemon(
         source=LocalMdSource(repo_cfg.path),
         repo_cfg=repo_cfg,
-        executor=executor if executor is not None else Executor(),
+        executor=ex,
+        resolver=Resolver(ex),
     )
     if once:
         return daemon.tick()

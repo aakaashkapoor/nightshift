@@ -120,10 +120,13 @@ Next up: **Phase 2** (always-running daemon + parallelism + merge-train).
   dependent-sees-parent across ticks, rebase-conflict blocks collider). 66 total.
   This closes the 2.3 cross-branch-dependency gap.
 
-- [ ] **2.6 Resolver agent (`nightshift-resolve`)**
-  - **Goal:** on rebase conflict/red-check, spawn a resolver agent (both specs in
-    context) that edits code to a clean, green merge.
-  - **Done when:** an induced conflict is resolved by the agent and merges green.
+- [x] **2.6 Resolver agent (`nightshift-resolve`)** — done: `resolver.py`
+  `Resolver` (runs headless Claude in the conflicted worktree with a resolve
+  prompt), `Executor.execute_prompt`, `integrate_branch(resolver=...)` with a
+  resolve loop (edit → detect leftover markers via `diff --cached --check` matching
+  "conflict marker", ignoring whitespace/CRLF → `rebase --continue`), daemon +
+  `run_daemon_cli` wire a real resolver. Test: induced conflict now resolves &
+  merges (both slices done). 67 total.
 
 - [ ] **2.7 Escalation cap + blocked/notify**
   - **Goal:** cap resolver attempts (N=2) → `blocked` + preserve worktree + eject

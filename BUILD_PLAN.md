@@ -69,14 +69,12 @@ works with a local headless Claude.
   shim. **Chose CLI subprocess over `claude-agent-sdk`** (testability + version
   robustness; SDK is a clean future swap). *Not yet run against a live Claude.*
 
-- [ ] **1.7 Work→Ship for a single slice (no rebase yet)**
-  - **Goal:** wire it together: create worktree → run executor (Work) → run check →
-    squash to ONE clean, informative commit (Ship, simplest form).
-  - **Seed:** *"Compose 1.4–1.6 into `run_slice(slice)`: worktree → executor → check
-    (loop back to executor up to a cap if red) → squash WIP to one clean commit
-    with an outcome-focused message → mark slice done. No rebase/merge-train yet."*
-  - **Done when:** one command turns a ready slice into one clean commit on its
-    branch, green check.
+- [x] **1.7 Work→Ship for a single slice (no rebase yet)** — done:
+  `nightshift/pipeline.py` `run_slice` + `SliceResult`. Composes worktree →
+  executor (Work) → check → ONE clean commit on green (marks slice `done`), retry/
+  resume up to `max_attempts` on red, else `blocked` + preserve worktree. 3 e2e
+  tests with real git + a fake agent (success=1 commit beyond main containing the
+  agent's file; retry-then-succeed; block+preserve). Test-first.
 
 - [ ] **1.8 `nsh run <slice>` end-to-end demo**
   - **Goal:** the tweetable v0.1 moment — `nsh run slice-001` on a real toy repo.

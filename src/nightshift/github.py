@@ -30,7 +30,14 @@ def _default_gh(repo_path: Path | str):  # pragma: no cover
     exe = shutil.which("gh") or "gh"
 
     def run(*args: str) -> str:
-        result = subprocess.run([exe, *args], cwd=str(repo_path), capture_output=True, text=True)
+        result = subprocess.run(
+            [exe, *args],
+            cwd=str(repo_path),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
         if result.returncode != 0:
             raise RuntimeError(f"gh {' '.join(args)} failed: {result.stderr.strip()}")
         return result.stdout

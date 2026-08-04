@@ -63,10 +63,20 @@ def _default_runner(argv: list[str], cwd: str, stdin_text: str) -> RunOutput:  #
             input=stdin_text,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             shell=True,
         )
     else:
-        proc = subprocess.run(cmd, cwd=cwd, input=stdin_text, capture_output=True, text=True)
+        proc = subprocess.run(
+            cmd,
+            cwd=cwd,
+            input=stdin_text,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
     return RunOutput(proc.returncode, proc.stdout, proc.stderr)
 
 

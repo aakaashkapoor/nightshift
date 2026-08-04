@@ -39,7 +39,13 @@ class SliceResult:
 
 def _git(cwd: Path | str, *args: str) -> str:
     with _GIT_LOCK:
-        result = subprocess.run(["git", "-C", str(cwd), *args], capture_output=True, text=True)
+        result = subprocess.run(
+            ["git", "-C", str(cwd), *args],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
     if result.returncode != 0:
         raise RuntimeError(f"git {' '.join(args)} failed: {result.stderr.strip()}")
     return result.stdout.strip()
@@ -49,7 +55,11 @@ def _git_ok(cwd: Path | str, *args: str) -> bool:
     with _GIT_LOCK:
         return (
             subprocess.run(
-                ["git", "-C", str(cwd), *args], capture_output=True, text=True
+                ["git", "-C", str(cwd), *args],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
             ).returncode
             == 0
         )
@@ -89,6 +99,8 @@ def _has_conflict_markers(cwd: Path | str) -> bool:
             ["git", "-C", str(cwd), "diff", "--cached", "--check"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
         )
     return "conflict marker" in result.stdout
 

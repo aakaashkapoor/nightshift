@@ -31,6 +31,8 @@ def _link_dir(target: Path, link: Path) -> None:
             check=True,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
         )
     else:  # pragma: no cover - POSIX branch; the gate runs on Windows
         os.symlink(target, link, target_is_directory=True)
@@ -44,7 +46,13 @@ def _unlink_dir(link: Path) -> None:
     """
     if os.name == "nt":
         # `rmdir` (no /s) removes a junction reparse point, leaving the target.
-        subprocess.run(["cmd", "/c", "rmdir", str(link)], capture_output=True, text=True)
+        subprocess.run(
+            ["cmd", "/c", "rmdir", str(link)],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
     else:  # pragma: no cover - POSIX branch; the gate runs on Windows
         link.unlink()
 
@@ -78,6 +86,8 @@ class WorktreeManager:
                 ["git", "-C", str(self.repo), *args],
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
             )
         if result.returncode != 0:
             raise RuntimeError(f"git {' '.join(args)} failed: {result.stderr.strip()}")

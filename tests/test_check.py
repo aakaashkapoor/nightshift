@@ -26,6 +26,13 @@ def test_check_runs_in_given_cwd(tmp_path) -> None:
     assert (tmp_path / "ran_here.txt").exists()
 
 
+def test_check_survives_undecodable_output(tmp_path) -> None:
+    # Byte 0x9d is undefined in Windows' default cp1252; must not crash the reader.
+    cmd = f'"{sys.executable}" -c "import sys; sys.stdout.buffer.write(bytes([0x9d])); sys.exit(0)"'
+    result = run_check(cmd, tmp_path)
+    assert result.passed is True  # decoded with errors=replace, no crash
+
+
 def test_timeout_returns_timed_out(tmp_path) -> None:
     cmd = f'"{sys.executable}" -c "import time; time.sleep(5)"'
     result = run_check(cmd, tmp_path, timeout=1)

@@ -309,6 +309,32 @@ def test_run_forever_ticks_n_times_then_stops(repo, tmp_path) -> None:
     assert len(calls) == 3
 
 
+def test_tick_logs_activity(repo, tmp_path, caplog) -> None:
+    import logging
+
+    _write_slice(repo, "slice-001")
+    with caplog.at_level(logging.INFO, logger="nightshift"):
+        _daemon(repo, tmp_path, Agent()).tick()
+    msgs = " ".join(r.message for r in caplog.records)
+    assert "running 1 slice" in msgs
+    assert "slice-001 done" in msgs
+
+
+def test_configure_logging_stdout_and_file(tmp_path) -> None:
+    from nightshift.daemon import configure_logging, log
+
+    log_file = tmp_path / "n.log"
+    configure_logging(log_file)
+    assert len(log.handlers) == 2  # stdout + file
+    log.info("hello-log-test")
+    for handler in log.handlers:
+        handler.flush()
+    assert "hello-log-test" in log_file.read_text(encoding="utf-8")
+
+    configure_logging(None)  # closes the file handler; stdout only
+    assert len(log.handlers) == 1
+
+
 def test_run_daemon_cli_once(repo, tmp_path) -> None:
     _write_slice(repo, "slice-001")
     cfg = tmp_path / "config.yaml"

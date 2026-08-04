@@ -112,10 +112,14 @@ def daemon(
     ),
     once: bool = typer.Option(False, "--once", help="Run a single tick and exit"),
     interval: float = typer.Option(30, "--interval", help="Poll interval in seconds"),
+    log_file: Path | None = typer.Option(
+        None, "--log-file", help="Also append timestamped logs to this file"
+    ),
 ) -> None:
     """Run the Nightshift daemon: drain ready slices (Work -> check -> commit)."""
-    from nightshift.daemon import run_daemon_cli
+    from nightshift.daemon import configure_logging, run_daemon_cli
 
+    configure_logging(log_file)
     results = run_daemon_cli(repo, config_path=config, once=once, interval=interval)
     for r in results:
         commit = f" ({r.commit[:8]})" if r.commit else ""

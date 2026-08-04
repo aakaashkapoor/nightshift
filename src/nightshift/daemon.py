@@ -8,9 +8,11 @@ interval.
 
 from __future__ import annotations
 
+import logging
 import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 
 from .config import Config, RepoConfig
 from .executor import Executor
@@ -26,6 +28,24 @@ from .worktree import WorktreeManager
 IN_PROGRESS = "in-progress"
 DONE = "done"
 BLOCKED = "blocked"
+
+log = logging.getLogger("nightshift")
+_LOG_FMT = logging.Formatter("%(asctime)s  nightshift  %(message)s", "%H:%M:%S")
+
+
+def configure_logging(log_file: Path | str | None = None) -> None:
+    """Send nightshift logs to stdout (and optionally a file)."""
+    log.setLevel(logging.INFO)
+    for handler in log.handlers:
+        handler.close()
+    log.handlers.clear()
+    stream = logging.StreamHandler()
+    stream.setFormatter(_LOG_FMT)
+    log.addHandler(stream)
+    if log_file:
+        file_handler = logging.FileHandler(log_file, encoding="utf-8")
+        file_handler.setFormatter(_LOG_FMT)
+        log.addHandler(file_handler)
 
 
 class Daemon:
@@ -140,12 +160,15 @@ class Daemon:
         """One pass: parallel Work on a non-overlapping batch, then a serial merge-train."""
         slices = self.source.list_all()
         if not slices:
+            log.info("idle — no slices")
             return []
         if self.runtime is not None:
             self.runtime.reconcile(known_slice_ids={s.id for s in slices}, worktrees=self.worktrees)
         batch = self._select_batch(Dag.build(slices).runnable())
         if not batch:
+            log.info("idle — %d slice(s), none runnable", len(slices))
             return []
+        log.info("running %d slice(s): %s", len(batch), ", ".join(s.id for s in batch))
         for sl in batch:
             self.source.set_status(sl.id, IN_PROGRESS)
         # Work: parallel, each in its own worktree.
@@ -153,6 +176,11 @@ class Daemon:
             work_results = list(pool.map(self._run_one, batch))
         # Ship: serial merge-train — one branch integrates at a time.
         results = [self._integrate(work) for work in work_results]
+        for r in results:
+            if r.status == DONE:
+                log.info("%s done (%s)", r.slice_id, (r.commit or "")[:8])
+            else:
+                log.warning("%s BLOCKED — %s", r.slice_id, r.detail)
         if self.runtime is not None:
             for r in results:
                 if r.status == DONE:

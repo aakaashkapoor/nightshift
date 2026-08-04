@@ -22,7 +22,7 @@ from .executor import Executor
 from .gitutil import LOCK as _GIT_LOCK
 from .runtime import Runtime
 from .slice import Slice
-from .source import LocalMdSource
+from .source import build_source
 from .worktree import WorktreeManager
 
 
@@ -280,10 +280,10 @@ def run_resume_cli(
     """`nsh resume` glue: resume a blocked slice on its worktree, then integrate."""
     cfg = Config.load(config_path)
     repo_cfg = cfg.repo(str(repo))
-    source = LocalMdSource(repo_cfg.path)
+    source = build_source(repo_cfg)
     sl = source.get(slice_id)
     if sl is None:
-        raise FileNotFoundError(f"no slice {slice_id!r} in {source.root}")
+        raise FileNotFoundError(f"no slice {slice_id!r} in {repo_cfg.path}")
 
     worktrees = WorktreeManager(repo_cfg.path, symlink_dirs=repo_cfg.symlink_dirs)
     runtime = Runtime(runtime_path)

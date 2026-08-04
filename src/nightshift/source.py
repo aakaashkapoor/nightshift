@@ -9,10 +9,21 @@ adapter behind the same shape.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Protocol
 
 from .slice import Slice
 
 READY = "ready"
+
+
+class Source(Protocol):
+    """The interface every slice source (local-md, github-issues) implements."""
+
+    def list_all(self) -> list[Slice]: ...
+    def list_ready(self) -> list[Slice]: ...
+    def get(self, slice_id: str) -> Slice | None: ...
+    def set_status(self, slice_id: str, status: str) -> None: ...
+    def set_blocked(self, slice_id: str, reason: str) -> None: ...
 
 
 class LocalMdSource:
@@ -61,3 +72,12 @@ class LocalMdSource:
         if reason and "## Blocked" not in sl.body:
             sl.body = sl.body.rstrip() + f"\n\n## Blocked\n{reason}\n"
         self.save(sl)
+
+
+def build_source(repo_cfg) -> Source:
+    """Pick the source adapter from a repo's config (SPEC §4)."""
+    if repo_cfg.source == "github-issues":
+        from .github import GitHubIssuesSource
+
+        return GitHubIssuesSource(repo_cfg.path)
+    return LocalMdSource(repo_cfg.path)

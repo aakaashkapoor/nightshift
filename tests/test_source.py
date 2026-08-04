@@ -56,3 +56,14 @@ def test_missing_slices_dir_returns_empty(tmp_path) -> None:
     source = LocalMdSource(tmp_path)  # no .slices dir at all
     assert source.list_all() == []
     assert source.list_ready() == []
+
+
+def test_build_source_selects_adapter_from_config(tmp_path) -> None:
+    from nightshift.config import RepoConfig
+    from nightshift.github import GitHubIssuesSource
+    from nightshift.source import build_source
+
+    local = build_source(RepoConfig(name="a", path=tmp_path, check="x", source="local-md"))
+    gh = build_source(RepoConfig(name="a", path=tmp_path, check="x", source="github-issues"))
+    assert isinstance(local, LocalMdSource)
+    assert isinstance(gh, GitHubIssuesSource)

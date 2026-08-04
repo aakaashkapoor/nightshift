@@ -20,7 +20,7 @@ from .resolver import Resolver
 from .review import AgentReviewer
 from .scheduler import Dag
 from .slice import Slice
-from .source import LocalMdSource
+from .source import Source, build_source
 from .worktree import WorktreeManager
 
 IN_PROGRESS = "in-progress"
@@ -32,7 +32,7 @@ class Daemon:
     def __init__(
         self,
         *,
-        source: LocalMdSource,
+        source: Source,
         repo_cfg: RepoConfig,
         executor: Executor,
         worktrees: WorktreeManager | None = None,
@@ -189,7 +189,7 @@ def run_daemon_cli(
     repo_cfg = cfg.repo(str(repo))
     ex = executor if executor is not None else Executor()
     daemon = Daemon(
-        source=LocalMdSource(repo_cfg.path),
+        source=build_source(repo_cfg),
         repo_cfg=repo_cfg,
         executor=ex,
         resolver=Resolver(ex),

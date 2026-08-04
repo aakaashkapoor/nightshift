@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import contextlib
 import os
+import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -17,6 +18,12 @@ from pathlib import Path
 from .gitutil import LOCK as _GIT_LOCK
 
 BRANCH_PREFIX = "nightshift/"
+
+
+def _force_rmtree(path: Path) -> None:
+    """Recursively delete a directory, tolerating Windows >260-char paths."""
+    target = rf"\\?\{path}" if os.name == "nt" else str(path)
+    shutil.rmtree(target, ignore_errors=True)
 
 
 def _link_dir(target: Path, link: Path) -> None:
@@ -104,6 +111,9 @@ class WorktreeManager:
 
     def create(self, slice_id: str, base_branch: str = "main") -> Worktree:
         self.root.mkdir(parents=True, exist_ok=True)
+        # Deep dependency dirs (node_modules) blow past Windows' 260-char limit;
+        # let git handle long paths so worktree add/remove don't fail.
+        self._git("config", "core.longpaths", "true")
         path = self.path_for(slice_id)
         branch = self.branch_for(slice_id)
         self._git("worktree", "add", "-b", branch, str(path), base_branch)
@@ -121,7 +131,13 @@ class WorktreeManager:
             link = path / name
             if link.exists():
                 _unlink_dir(link)
-        self._git("worktree", "remove", "--force", str(path))
+        try:
+            self._git("worktree", "remove", "--force", str(path))
+        except RuntimeError:  # pragma: no cover - Windows long-path fallback
+            # Deps materialized into a deep real dir git can't delete — force it.
+            _force_rmtree(path)
+            with contextlib.suppress(RuntimeError):
+                self._git("worktree", "prune")
         with contextlib.suppress(RuntimeError):
             self._git("branch", "-D", self.branch_for(slice_id))  # may be pruned
 

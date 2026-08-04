@@ -86,6 +86,26 @@ def test_create_symlinks_shared_dirs(repo, tmp_path) -> None:
     assert (wt.path / "node_modules" / "marker.txt").read_text(encoding="utf-8") == "dep"
 
 
+def test_create_enables_git_longpaths(repo, tmp_path) -> None:
+    WorktreeManager(repo, worktrees_root=tmp_path / "wts").create("slice-001")
+    longpaths = subprocess.run(
+        ["git", "-C", str(repo), "config", "--get", "core.longpaths"],
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    assert longpaths == "true"
+
+
+def test_force_rmtree_deletes_nested_dir(tmp_path) -> None:
+    from nightshift.worktree import _force_rmtree
+
+    deep = tmp_path / "d" / "a" / "b" / "c"
+    deep.mkdir(parents=True)
+    (deep / "f.txt").write_text("x", encoding="utf-8")
+    _force_rmtree(tmp_path / "d")
+    assert not (tmp_path / "d").exists()
+
+
 def test_teardown_removes_link_without_deleting_target(repo, tmp_path) -> None:
     (repo / "node_modules").mkdir()
     (repo / "node_modules" / "marker.txt").write_text("dep", encoding="utf-8")

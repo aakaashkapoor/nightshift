@@ -119,13 +119,15 @@ def integrate_branch(
     check_cmd: str,
     resolver=None,
     resolve_attempts: int = 2,
+    push: bool = False,
 ) -> IntegrationResult:
     """Serial merge-train step (SPEC §6): rebase onto base -> re-check -> ff-merge.
 
     Run one branch at a time so each rebase targets a *stationary* base. On a rebase
     conflict, if a ``resolver`` agent is supplied it edits the worktree to a clean
     merge (up to ``resolve_attempts`` tries); otherwise (or if unresolved) returns
-    ``merged=False``. Post-rebase, a red check also returns ``merged=False``.
+    ``merged=False``. Post-rebase, a red check also returns ``merged=False``. When
+    ``push`` is set, the merged base branch is pushed to ``origin`` (SPEC §9).
     """
     if not _git_ok(worktree_path, "rebase", base_branch):
         resolved = resolver is not None and _resolve_conflicted_rebase(
@@ -143,6 +145,9 @@ def integrate_branch(
         _git(repo_path, "merge", "--ff-only", branch)
     except RuntimeError as exc:  # pragma: no cover - defensive; base moved mid-train
         return IntegrationResult(False, None, f"merge failed: {exc}")
+
+    if push:
+        _git(repo_path, "push", "origin", base_branch)
 
     return IntegrationResult(True, _git(repo_path, "rev-parse", base_branch), "merged")
 

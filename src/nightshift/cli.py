@@ -59,6 +59,9 @@ def init(
         "--symlink",
         help="Comma-separated dirs to link into each worktree (e.g. node_modules)",
     ),
+    push: bool = typer.Option(
+        False, "--push/--no-push", help="Push base to origin after a successful merge"
+    ),
 ) -> None:
     """Register a repo in the Nightshift config (auto-detects the check)."""
     from nightshift.config import register_repo
@@ -69,7 +72,13 @@ def init(
     check = check or detect_check(repo) or "echo 'TODO: set your check command'"
     symlink_dirs = [s.strip() for s in symlink.split(",")] if symlink else None
     target = register_repo(
-        config, name=name, path=repo, check=check, source=source, symlink_dirs=symlink_dirs
+        config,
+        name=name,
+        path=repo,
+        check=check,
+        source=source,
+        symlink_dirs=symlink_dirs,
+        push=push,
     )
     typer.echo(
         f"registered '{name}' -> {repo}\n  check:  {check}\n  source: {source}\n  config: {target}"

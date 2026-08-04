@@ -120,6 +120,7 @@ class Daemon:
             check_cmd=self.repo_cfg.check,
             resolver=self.resolver,
             resolve_attempts=self.resolve_attempts,
+            push=self.repo_cfg.push,
         )
         if result.merged:
             self.worktrees.teardown(work.slice_id)

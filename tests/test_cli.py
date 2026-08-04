@@ -54,6 +54,18 @@ def test_init_with_symlink(tmp_path) -> None:
     assert Config.load(cfg).repo("y").symlink_dirs == ["node_modules", ".venv"]
 
 
+def test_init_with_push(tmp_path) -> None:
+    (tmp_path / "package.json").write_text("{}", encoding="utf-8")
+    cfg = tmp_path / "config.yaml"
+    result = runner.invoke(
+        app, ["init", "--repo", str(tmp_path), "--config", str(cfg), "--name", "z", "--push"]
+    )
+    assert result.exit_code == 0
+    from nightshift.config import Config
+
+    assert Config.load(cfg).repo("z").push is True
+
+
 def test_run_command_done(monkeypatch) -> None:
     monkeypatch.setattr("nightshift.pipeline.run_slice_cli", lambda *a, **k: _done())
     result = runner.invoke(app, ["run", "s", "--config", "c.yaml"])

@@ -33,6 +33,7 @@ def register_repo(
     source: str = "local-md",
     base_branch: str = "main",
     symlink_dirs: list | None = None,
+    push: bool = False,
 ) -> Path:
     """Add/update a repo entry in the central config (concierge / `nsh init`)."""
     target = Path(config_path) if config_path is not None else DEFAULT_CONFIG_PATH
@@ -48,6 +49,8 @@ def register_repo(
     }
     if symlink_dirs:
         entry["symlink_dirs"] = symlink_dirs
+    if push:
+        entry["push"] = True
     repos[name] = entry
     target.parent.mkdir(parents=True, exist_ok=True)
     with target.open("w", encoding="utf-8") as handle:
@@ -86,6 +89,7 @@ class RepoConfig:
     tracker: dict = field(default_factory=lambda: {"type": "none"})
     max_parallel: int = 5
     symlink_dirs: list = field(default_factory=list)
+    push: bool = False  # push base to origin after a successful merge (SPEC §9)
 
 
 @dataclass
@@ -139,4 +143,5 @@ class Config:
             tracker=entry.get("tracker", {"type": "none"}),
             max_parallel=entry.get("max_parallel", self.defaults.get("max_parallel", 5)),
             symlink_dirs=entry.get("symlink_dirs", []),
+            push=entry.get("push", False),
         )

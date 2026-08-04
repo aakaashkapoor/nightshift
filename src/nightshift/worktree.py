@@ -36,6 +36,19 @@ def _link_dir(target: Path, link: Path) -> None:
         os.symlink(target, link, target_is_directory=True)
 
 
+def _unlink_dir(link: Path) -> None:
+    """Remove a directory link WITHOUT deleting the target's contents.
+
+    Critical before ``git worktree remove``: otherwise git recurses into the
+    junction (long Windows paths, and it could delete the real node_modules).
+    """
+    if os.name == "nt":
+        # `rmdir` (no /s) removes a junction reparse point, leaving the target.
+        subprocess.run(["cmd", "/c", "rmdir", str(link)], capture_output=True, text=True)
+    else:  # pragma: no cover - POSIX branch; the gate runs on Windows
+        link.unlink()
+
+
 @dataclass
 class Worktree:
     slice_id: str
@@ -93,6 +106,11 @@ class WorktreeManager:
     def teardown(self, slice_id: str) -> None:
         """Remove the worktree and delete its branch (post-merge cleanup)."""
         path = self.path_for(slice_id)
+        # Drop the shared-dir links FIRST so git doesn't recurse into them.
+        for name in self.symlink_dirs:
+            link = path / name
+            if link.exists():
+                _unlink_dir(link)
         self._git("worktree", "remove", "--force", str(path))
         with contextlib.suppress(RuntimeError):
             self._git("branch", "-D", self.branch_for(slice_id))  # may be pruned

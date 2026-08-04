@@ -86,10 +86,24 @@ def test_create_symlinks_shared_dirs(repo, tmp_path) -> None:
     assert (wt.path / "node_modules" / "marker.txt").read_text(encoding="utf-8") == "dep"
 
 
+def test_teardown_removes_link_without_deleting_target(repo, tmp_path) -> None:
+    (repo / "node_modules").mkdir()
+    (repo / "node_modules" / "marker.txt").write_text("dep", encoding="utf-8")
+    wm = WorktreeManager(repo, worktrees_root=tmp_path / "wts", symlink_dirs=["node_modules"])
+    wm.create("slice-001")
+
+    wm.teardown("slice-001")  # must not raise, and must NOT delete the real dir
+
+    assert not wm.exists("slice-001")
+    assert (repo / "node_modules" / "marker.txt").exists()  # target intact
+
+
 def test_create_skips_missing_symlink_dir(repo, tmp_path) -> None:
     wm = WorktreeManager(repo, worktrees_root=tmp_path / "wts", symlink_dirs=["nope"])
     wt = wm.create("slice-001")  # must not raise
     assert not (wt.path / "nope").exists()
+    wm.teardown("slice-001")  # teardown with a configured-but-absent link must be fine
+    assert not wm.exists("slice-001")
 
 
 def test_create_from_moved_main_uses_tip(wm, repo) -> None:

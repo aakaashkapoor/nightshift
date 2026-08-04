@@ -54,6 +54,11 @@ def init(
         None, "--check", help="Verification command (auto-detected if omitted)"
     ),
     source: str = typer.Option("local-md", "--source", help="local-md | github-issues"),
+    symlink: str | None = typer.Option(
+        None,
+        "--symlink",
+        help="Comma-separated dirs to link into each worktree (e.g. node_modules)",
+    ),
 ) -> None:
     """Register a repo in the Nightshift config (auto-detects the check)."""
     from nightshift.config import register_repo
@@ -62,7 +67,10 @@ def init(
     repo = repo.resolve()
     name = name or repo.name
     check = check or detect_check(repo) or "echo 'TODO: set your check command'"
-    target = register_repo(config, name=name, path=repo, check=check, source=source)
+    symlink_dirs = [s.strip() for s in symlink.split(",")] if symlink else None
+    target = register_repo(
+        config, name=name, path=repo, check=check, source=source, symlink_dirs=symlink_dirs
+    )
     typer.echo(
         f"registered '{name}' -> {repo}\n  check:  {check}\n  source: {source}\n  config: {target}"
     )

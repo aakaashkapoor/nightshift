@@ -9,6 +9,7 @@ merge — or *preserved* for inspection when a slice is blocked.
 from __future__ import annotations
 
 import contextlib
+import os
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -16,6 +17,23 @@ from pathlib import Path
 from .gitutil import LOCK as _GIT_LOCK
 
 BRANCH_PREFIX = "nightshift/"
+
+
+def _link_dir(target: Path, link: Path) -> None:
+    """Link ``link`` -> ``target`` for a directory, cross-platform.
+
+    Windows uses a directory *junction* (no admin / developer-mode needed); POSIX
+    uses a symlink.
+    """
+    if os.name == "nt":
+        subprocess.run(
+            ["cmd", "/c", "mklink", "/J", str(link), str(target)],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    else:  # pragma: no cover - POSIX branch; the gate runs on Windows
+        os.symlink(target, link, target_is_directory=True)
 
 
 @dataclass
@@ -26,12 +44,20 @@ class Worktree:
 
 
 class WorktreeManager:
-    def __init__(self, repo_path: Path | str, worktrees_root: Path | str | None = None):
+    def __init__(
+        self,
+        repo_path: Path | str,
+        worktrees_root: Path | str | None = None,
+        symlink_dirs: list[str] | None = None,
+    ):
         self.repo = Path(repo_path).resolve()
         if worktrees_root is not None:
             self.root = Path(worktrees_root).resolve()
         else:
             self.root = self.repo.parent / ".nightshift-worktrees" / self.repo.name
+        # Gitignored dirs (e.g. node_modules, .venv) linked into each worktree so
+        # the check can run without a per-worktree reinstall (SPEC §6).
+        self.symlink_dirs = list(symlink_dirs or [])
 
     def _git(self, *args: str) -> str:
         with _GIT_LOCK:
@@ -58,6 +84,10 @@ class WorktreeManager:
         path = self.path_for(slice_id)
         branch = self.branch_for(slice_id)
         self._git("worktree", "add", "-b", branch, str(path), base_branch)
+        for name in self.symlink_dirs:
+            src, dst = self.repo / name, path / name
+            if src.exists() and not dst.exists():
+                _link_dir(src, dst)
         return Worktree(slice_id=slice_id, path=path, branch=branch)
 
     def teardown(self, slice_id: str) -> None:

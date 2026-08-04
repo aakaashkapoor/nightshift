@@ -32,6 +32,7 @@ def register_repo(
     check: str,
     source: str = "local-md",
     base_branch: str = "main",
+    symlink_dirs: list | None = None,
 ) -> Path:
     """Add/update a repo entry in the central config (concierge / `nsh init`)."""
     target = Path(config_path) if config_path is not None else DEFAULT_CONFIG_PATH
@@ -39,12 +40,15 @@ def register_repo(
     if target.exists():
         data = _yaml.load(target.read_text(encoding="utf-8")) or {}
     repos = data.setdefault("repos", {})
-    repos[name] = {
+    entry: dict[str, Any] = {
         "path": str(path),
         "source": source,
         "check": check,
         "base_branch": base_branch,
     }
+    if symlink_dirs:
+        entry["symlink_dirs"] = symlink_dirs
+    repos[name] = entry
     target.parent.mkdir(parents=True, exist_ok=True)
     with target.open("w", encoding="utf-8") as handle:
         _yaml_rt.dump(data, handle)
@@ -81,6 +85,7 @@ class RepoConfig:
     )
     tracker: dict = field(default_factory=lambda: {"type": "none"})
     max_parallel: int = 5
+    symlink_dirs: list = field(default_factory=list)
 
 
 @dataclass
@@ -133,4 +138,5 @@ class Config:
             ),
             tracker=entry.get("tracker", {"type": "none"}),
             max_parallel=entry.get("max_parallel", self.defaults.get("max_parallel", 5)),
+            symlink_dirs=entry.get("symlink_dirs", []),
         )

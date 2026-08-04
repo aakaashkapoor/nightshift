@@ -74,6 +74,24 @@ def test_list_slices(wm) -> None:
     assert set(wm.list_slices()) == {"slice-001", "slice-002"}
 
 
+def test_create_symlinks_shared_dirs(repo, tmp_path) -> None:
+    # A gitignored shared dir (e.g. node_modules) in the main checkout.
+    (repo / "node_modules").mkdir()
+    (repo / "node_modules" / "marker.txt").write_text("dep", encoding="utf-8")
+    wm = WorktreeManager(repo, worktrees_root=tmp_path / "wts", symlink_dirs=["node_modules"])
+
+    wt = wm.create("slice-001")
+
+    # The worktree sees the shared dir through the link (so `npm run check` works).
+    assert (wt.path / "node_modules" / "marker.txt").read_text(encoding="utf-8") == "dep"
+
+
+def test_create_skips_missing_symlink_dir(repo, tmp_path) -> None:
+    wm = WorktreeManager(repo, worktrees_root=tmp_path / "wts", symlink_dirs=["nope"])
+    wt = wm.create("slice-001")  # must not raise
+    assert not (wt.path / "nope").exists()
+
+
 def test_create_from_moved_main_uses_tip(wm, repo) -> None:
     # A second commit lands on main; a new worktree should branch from the new tip.
     (repo / "second.txt").write_text("2\n", encoding="utf-8")

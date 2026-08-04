@@ -47,7 +47,9 @@ class Daemon:
         self.source = source
         self.repo_cfg = repo_cfg
         self.executor = executor
-        self.worktrees = worktrees or WorktreeManager(repo_cfg.path)
+        self.worktrees = worktrees or WorktreeManager(
+            repo_cfg.path, symlink_dirs=repo_cfg.symlink_dirs
+        )
         self.max_attempts = max_attempts
         self.max_parallel = max_parallel or repo_cfg.max_parallel
         self.resolver = resolver

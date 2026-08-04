@@ -8,9 +8,10 @@ through injectable runners so this is unit-testable without a live remote.
 
 from __future__ import annotations
 
-import shutil
 import subprocess
 from pathlib import Path
+
+from ._exe import GH_DIRS, which
 
 
 def issue_number_for(slice_id: str) -> str | None:
@@ -29,7 +30,7 @@ def build_pr_body(sl, *, closes_issue: str | None = None) -> str:
 
 
 def _runner(bin_name: str, repo_path: Path | str):  # pragma: no cover
-    exe = shutil.which(bin_name) or bin_name
+    exe = which(bin_name, GH_DIRS) or bin_name
 
     def run(*args: str) -> str:
         result = subprocess.run(

@@ -18,11 +18,12 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+
+from ._exe import which
 
 CLAUDE_BIN = "claude"
 
@@ -51,7 +52,7 @@ def _default_runner(argv: list[str], cwd: str, stdin_text: str) -> RunOutput:  #
 
     Not unit tested (needs a live, authenticated Claude) — smoke-tested at 1.8.
     """
-    exe = shutil.which(argv[0])
+    exe = which(argv[0])
     if exe is None:
         raise FileNotFoundError(f"'{argv[0]}' not found on PATH — is Claude Code installed?")
     cmd = [exe, *argv[1:]]

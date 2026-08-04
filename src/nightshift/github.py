@@ -10,10 +10,10 @@ repo directory.
 from __future__ import annotations
 
 import re
-import shutil
 import subprocess
 from pathlib import Path
 
+from ._exe import GH_DIRS, which
 from .slice import Slice
 
 PREFIX = "nightshift:"
@@ -27,7 +27,7 @@ _DEPENDS_RE = re.compile(r"(?im)^depends-on:\s*(.+)$")
 
 
 def _default_gh(repo_path: Path | str):  # pragma: no cover
-    exe = shutil.which("gh") or "gh"
+    exe = which("gh", GH_DIRS) or "gh"
 
     def run(*args: str) -> str:
         result = subprocess.run(

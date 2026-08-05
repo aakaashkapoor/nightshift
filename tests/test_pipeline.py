@@ -147,3 +147,87 @@ def test_integrate_pushes_base_when_enabled(tmp_path) -> None:
         text=True,
     ).stdout
     assert "new.txt" in origin_files  # pushed to origin
+
+
+def _repo_with_worktree(tmp_path):
+    """A local repo (no remote) plus one worktree with an unmerged commit."""
+    repo = tmp_path / "repo"
+    subprocess.run(
+        ["git", "init", "-b", "main", str(repo)], check=True, capture_output=True, text=True
+    )
+    _git(repo, "config", "user.email", "t@e.local")
+    _git(repo, "config", "user.name", "T")
+    (repo / "README.md").write_text("hi\n", encoding="utf-8")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-m", "init")
+
+    wts = WorktreeManager(repo, worktrees_root=tmp_path / "wts")
+    wt = wts.create("slice-001")
+    (wt.path / "new.txt").write_text("x", encoding="utf-8")
+    _git(wt.path, "add", "-A")
+    _git(wt.path, "commit", "-m", "add new")
+    return repo, wt
+
+
+def test_integrate_runs_sync_after_merge(tmp_path) -> None:
+    """A worktree's own dependency install can leave the repo's symlinked dir
+    (e.g. node_modules) stale even though the merge itself is clean — sync_cmd is
+    what catches the repo back up, and it must run against the *repo*, post-merge,
+    not the worktree."""
+    from nightshift.pipeline import integrate_branch
+
+    repo, wt = _repo_with_worktree(tmp_path)
+    marker = repo / "synced.txt"
+    sync_cmd = f"\"{sys.executable}\" -c \"open('synced.txt', 'w').write('x')\""
+
+    result = integrate_branch(
+        repo_path=repo,
+        worktree_path=wt.path,
+        branch=wt.branch,
+        base_branch="main",
+        check_cmd="echo ok",
+        sync_cmd=sync_cmd,
+    )
+    assert result.merged
+    assert marker.exists()  # ran in repo_path, after the merge
+
+
+def test_integrate_survives_sync_failure(tmp_path) -> None:
+    """A broken sync command must not undo an already-clean merge or crash the
+    daemon — it's noted and left for a later slice's sync to self-heal."""
+    from nightshift.pipeline import integrate_branch
+
+    repo, wt = _repo_with_worktree(tmp_path)
+    failing_sync = f'"{sys.executable}" -c "import sys; sys.exit(1)"'
+
+    result = integrate_branch(
+        repo_path=repo,
+        worktree_path=wt.path,
+        branch=wt.branch,
+        base_branch="main",
+        check_cmd="echo ok",
+        sync_cmd=failing_sync,
+    )
+    assert result.merged
+    assert "sync failed" in result.detail
+    assert _git(repo, "log", "-1", "--format=%s") == "add new"  # merge still landed
+
+
+def test_integrate_survives_push_failure(tmp_path) -> None:
+    """A push failure (no remote here, but the same holds for a network blip or
+    a stale pre-push hook) must not raise — that's what stranded a merged-but-
+    unpushed commit with its worktree never torn down, observed in practice."""
+    from nightshift.pipeline import integrate_branch
+
+    repo, wt = _repo_with_worktree(tmp_path)  # no "origin" remote configured
+
+    result = integrate_branch(
+        repo_path=repo,
+        worktree_path=wt.path,
+        branch=wt.branch,
+        base_branch="main",
+        check_cmd="echo ok",
+        push=True,
+    )
+    assert result.merged  # local merge still counts
+    assert "push failed" in result.detail

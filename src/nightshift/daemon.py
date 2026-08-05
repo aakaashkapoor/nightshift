@@ -141,6 +141,7 @@ class Daemon:
             resolver=self.resolver,
             resolve_attempts=self.resolve_attempts,
             push=self.repo_cfg.push,
+            sync_cmd=self.repo_cfg.sync,
         )
         if result.merged:
             self.worktrees.teardown(work.slice_id)

@@ -34,6 +34,7 @@ def register_repo(
     base_branch: str = "main",
     symlink_dirs: list | None = None,
     push: bool = False,
+    sync: str | None = None,
 ) -> Path:
     """Add/update a repo entry in the central config (concierge / `nsh init`)."""
     target = Path(config_path) if config_path is not None else DEFAULT_CONFIG_PATH
@@ -51,6 +52,8 @@ def register_repo(
         entry["symlink_dirs"] = symlink_dirs
     if push:
         entry["push"] = True
+    if sync:
+        entry["sync"] = sync
     repos[name] = entry
     target.parent.mkdir(parents=True, exist_ok=True)
     with target.open("w", encoding="utf-8") as handle:
@@ -90,6 +93,10 @@ class RepoConfig:
     max_parallel: int = 5
     symlink_dirs: list = field(default_factory=list)
     push: bool = False  # push base to origin after a successful merge (SPEC §9)
+    # Runs in repo_path right after a successful merge, before push (e.g. `npm
+    # install`) — a symlinked dir like node_modules can end up stale in the repo
+    # even though the merge is clean; see integrate_branch's docstring.
+    sync: str | None = None
 
 
 @dataclass
@@ -144,4 +151,5 @@ class Config:
             max_parallel=entry.get("max_parallel", self.defaults.get("max_parallel", 5)),
             symlink_dirs=entry.get("symlink_dirs", []),
             push=entry.get("push", False),
+            sync=entry.get("sync"),
         )

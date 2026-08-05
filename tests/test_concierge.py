@@ -53,6 +53,20 @@ def test_register_repo_with_symlinks(tmp_path) -> None:
     assert rc.source == "github-issues"
 
 
+def test_register_repo_with_sync(tmp_path) -> None:
+    cfg = tmp_path / "config.yaml"
+    register_repo(
+        cfg,
+        name="app",
+        path=tmp_path / "app",
+        check="npm run check",
+        symlink_dirs=["node_modules"],
+        sync="npm install",
+    )
+    rc = Config.load(cfg).repo("app")
+    assert rc.sync == "npm install"
+
+
 def test_register_repo_updates_existing(tmp_path) -> None:
     cfg = tmp_path / "config.yaml"
     register_repo(cfg, name="a", path=tmp_path / "a", check="pytest")

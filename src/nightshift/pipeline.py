@@ -132,14 +132,27 @@ def integrate_branch(
     resolver=None,
     resolve_attempts: int = 2,
     push: bool = False,
+    sync_cmd: str | None = None,
 ) -> IntegrationResult:
     """Serial merge-train step (SPEC §6): rebase onto base -> re-check -> ff-merge.
 
     Run one branch at a time so each rebase targets a *stationary* base. On a rebase
     conflict, if a ``resolver`` agent is supplied it edits the worktree to a clean
     merge (up to ``resolve_attempts`` tries); otherwise (or if unresolved) returns
-    ``merged=False``. Post-rebase, a red check also returns ``merged=False``. When
-    ``push`` is set, the merged base branch is pushed to ``origin`` (SPEC §9).
+    ``merged=False``. Post-rebase, a red check also returns ``merged=False``.
+
+    A merge that lands is never undone by what happens after it. ``sync_cmd`` (e.g.
+    ``npm install``) runs in ``repo_path`` once the merge succeeds — worktrees share
+    directories like ``node_modules`` with the repo via a symlink (SPEC §6), but a
+    slice's own dependency install can silently replace that symlink with a real,
+    worktree-local directory (observed: npm does this rather than writing through a
+    junction), leaving the repo's copy stale even though the merge is clean. Then
+    ``push``, if set, sends the base branch to ``origin``. Both are best-effort: a
+    failure in either is folded into ``detail`` rather than raised, because raising
+    here would crash the daemon mid-tick and strand the merged commit un-pushed
+    with its worktree never torn down (also observed) instead of just retrying on
+    the next slice's sync/push, which reconciles against the *current* lockfile/
+    branch state regardless of what this slice added.
     """
     if not _git_ok(worktree_path, "rebase", base_branch):
         resolved = resolver is not None and _resolve_conflicted_rebase(
@@ -158,10 +171,24 @@ def integrate_branch(
     except RuntimeError as exc:  # pragma: no cover - defensive; base moved mid-train
         return IntegrationResult(False, None, f"merge failed: {exc}")
 
-    if push:
-        _git(repo_path, "push", "origin", base_branch)
+    notes: list[str] = []
 
-    return IntegrationResult(True, _git(repo_path, "rev-parse", base_branch), "merged")
+    if sync_cmd:
+        sync_result = run_check(sync_cmd, repo_path)
+        if not sync_result.passed:
+            notes.append(
+                "post-merge sync failed, will retry on a later successful sync: "
+                + sync_result.output[-300:].strip()
+            )
+
+    if push:
+        try:
+            _git(repo_path, "push", "origin", base_branch)
+        except RuntimeError as exc:
+            notes.append(f"push failed, will retry on a later push: {exc}")
+
+    detail = "merged" if not notes else "merged; " + "; ".join(notes)
+    return IntegrationResult(True, _git(repo_path, "rev-parse", base_branch), detail)
 
 
 def run_slice(
@@ -324,6 +351,8 @@ def run_resume_cli(
         branch=resumed.branch,
         base_branch=repo_cfg.base_branch,
         check_cmd=repo_cfg.check,
+        push=repo_cfg.push,
+        sync_cmd=repo_cfg.sync,
     )
     if integ.merged:
         worktrees.teardown(slice_id)

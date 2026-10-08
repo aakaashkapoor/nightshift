@@ -28,5 +28,6 @@ repos:
     source: github-issues
     check: "make test"
     base_branch: main
+    babysit: true                 # default for github-issues: PRs wait for the driving agent
     pr: { enabled: true, automerge: true }   # AI review always runs first
     external_review: { required: false, provider: github-pr }

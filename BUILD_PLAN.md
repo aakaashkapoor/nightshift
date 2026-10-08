@@ -209,9 +209,12 @@ Live gh/PR paths await a real remote. Next: **Phase 4** (concierge + distributio
   (Jira/Linear are future adapters). 1 test.
 - [x] **5.3 Adapters doc** — `docs/ADAPTERS.md` documents all five interfaces and the
   contribution path (implement → factory → injected-transport test → config).
-- [ ] **5.4 External review wiring** — `pr.open_pr_for_slice(automerge=...)` already
-  supports "leave PR open for human sign-off"; wiring the daemon Ship phase to choose
-  local-merge vs PR-vs-external-review from config needs a live remote to finish.
+- [x] **5.4 External review wiring (babysit)** — github-issues repos open a
+  `nightshift:babysit` PR per slice and stop; the tick settles merged/closed PRs;
+  `nightshift-babysit` skill for the driving agent. Plan:
+  `docs/superpowers/plans/2026-10-08-babysit.md`. Live acceptance: see 5.4a.
+- [ ] **5.4a Babysit live acceptance** — one real slice on a scratch GitHub repo:
+  PR opened → babysit pass merges it → next tick marks it done.
 - [ ] **5.5 More adapters** (Teams, Discord, Jira, Linear, GitLab) — community.
 - [ ] **Self-hosting:** Nightshift starts building Nightshift. 🌙
 

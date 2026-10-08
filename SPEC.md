@@ -258,6 +258,7 @@ repos:
     source: github-issues         # | local-md
     check: "make test"            # THE per-repo verification gate
     base_branch: main
+    babysit: true                 # default for github-issues: PRs wait for the driving agent
     pr: { enabled: true, template: default, automerge: true }
     external_review: { required: false, provider: github-pr }
     tracker: { type: none }       # none | jira (+ creds via env)
@@ -293,6 +294,15 @@ Two independent things (previously conflated):
 - **Provider = GitHub Pull Requests at launch**, behind a **`Reviewer` interface**
   so the community can add others later (GitLab MRs, Gerrit, Microsoft's internal
   review system, …).
+- **Babysit (`babysit: true`, default for `github-issues` repos)** is the
+  agent-driven form of external review. After `check` + AI review, Ship rebases,
+  re-checks, opens a PR labelled `nightshift:babysit` (automerge off), marks the
+  slice `in-review` and moves on. The agent driving Nightshift reviews it with the
+  `nightshift-babysit` skill: it verifies whatever the change needs, fixes small
+  problems on the branch, files follow-ups as new issues, and merges. Each tick the
+  daemon pulls `base_branch` and settles `in-review` slices (merged → `done`,
+  closed → `blocked`). Dependants wait for the merge. `babysit: false` keeps the
+  local merge-train. Design: `docs/superpowers/specs/2026-10-08-babysit-design.md`.
 
 ---
 
@@ -309,6 +319,7 @@ agents; invoke manually only when the user explicitly asks."*
 | `nightshift-review` | The always-on AI reviewer (Ship step). |
 | `nightshift-resolve` | The merge-conflict / post-rebase resolver agent. |
 | `nightshift-setup` | The concierge (re-runnable onboarding + reconfiguration). |
+| `nightshift-babysit` | Used by the **driving agent** (not the daemon): reviews, fixes and merges babysit PRs. On by default for babysit repos. |
 
 > The author's personal `grill-me` stays untouched. A user with their own slicing
 > skill keeps it — it just needs to emit the §3 slice format.

@@ -25,7 +25,9 @@ First real user: the `motioncraft` video engine, where most work is visual.
 
 ### 1. Babysit is on by default
 
-New per-repo config key, default `true`:
+New per-repo config key. **Defaults to on for `github-issues` repos**, off for
+`local-md` (babysit needs PRs). `babysit: true` on a `local-md` repo is a config
+error. `babysit: false` keeps today's Ship exactly (local merge-train + optional push).
 
 ```yaml
 repos:

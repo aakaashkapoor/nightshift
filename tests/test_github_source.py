@@ -81,3 +81,25 @@ def test_set_blocked_labels_and_comments() -> None:
     assert ("issue", "comment") in kinds
     comment = next(c for c in gh.calls if c[0:2] == ("issue", "comment"))
     assert "conflict" in comment[-1]
+
+
+def test_in_review_label_maps_to_status() -> None:
+    issues = [
+        {
+            "number": 7,
+            "title": "t",
+            "body": "",
+            "state": "OPEN",
+            "labels": [{"name": "nightshift:in-review"}],
+        }
+    ]
+    src = GitHubIssuesSource(".", gh=FakeGh(issues))
+    assert src.get("issue-7").status == "in-review"
+
+
+def test_set_status_in_review_swaps_labels() -> None:
+    gh = FakeGh([])
+    GitHubIssuesSource(".", gh=gh).set_status("issue-7", "in-review")
+    edit = gh.calls[0]
+    assert edit[edit.index("--add-label") + 1] == "nightshift:in-review"
+    assert "nightshift:in-progress" in edit[edit.index("--remove-label") + 1]

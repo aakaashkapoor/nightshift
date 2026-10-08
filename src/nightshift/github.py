@@ -20,6 +20,7 @@ PREFIX = "nightshift:"
 LABELS = {
     "ready": f"{PREFIX}ready",
     "in-progress": f"{PREFIX}in-progress",
+    "in-review": f"{PREFIX}in-review",
     "blocked": f"{PREFIX}blocked",
 }
 _LABEL_TO_STATUS = {v: k for k, v in LABELS.items()}

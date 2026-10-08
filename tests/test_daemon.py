@@ -10,6 +10,7 @@ import pytest
 from nightshift.config import RepoConfig
 from nightshift.daemon import Daemon, run_daemon_cli
 from nightshift.executor import Executor, RunOutput
+from nightshift.slice import Slice
 from nightshift.source import LocalMdSource
 from nightshift.worktree import WorktreeManager
 
@@ -344,3 +345,120 @@ def test_run_daemon_cli_once(repo, tmp_path) -> None:
     )
     results = run_daemon_cli(repo, config_path=cfg, once=True, executor=Executor(runner=Agent()))
     assert results[0].status == "done"
+
+
+# --- babysit (SPEC §9) --------------------------------------------------------
+
+
+class FakePR:
+    """Records opened PRs; answers state() from a dict keyed by branch."""
+
+    def __init__(self, states=None, fail=False):
+        self.opened = []
+        self.states = states or {}
+        self.fail = fail
+
+    def open(self, *, branch, base, title, body, labels=()):
+        if self.fail:
+            raise RuntimeError("gh down")
+        self.opened.append((branch, labels))
+        return f"https://gh/pr/{branch}"
+
+    def automerge(self, branch):  # pragma: no cover - babysit never automerges
+        raise AssertionError("babysit must not automerge")
+
+    def state(self, branch):
+        if branch not in self.states:
+            raise RuntimeError("no pr")
+        return self.states[branch]
+
+
+def _babysit_daemon(repo, pr, tmp_path):
+    cfg = RepoConfig(name="r", path=repo, check="echo ok", babysit=True)
+    return Daemon(
+        source=LocalMdSource(repo),  # status mechanics are source-agnostic
+        repo_cfg=cfg,
+        executor=Executor(runner=Agent()),
+        worktrees=WorktreeManager(repo, worktrees_root=tmp_path / "wts"),
+        pr=pr,
+    )
+
+
+def test_babysit_opens_pr_and_does_not_merge(repo, tmp_path) -> None:
+    _write_slice(repo, "slice-001")
+    pr = FakePR()
+    results = _babysit_daemon(repo, pr, tmp_path).tick()
+
+    assert results[0].status == "in-review"
+    assert pr.opened == [("nightshift/slice-001", ("nightshift:babysit",))]
+    assert "slice-001.txt" not in _main_files(repo)  # NOT merged locally
+    assert Slice.load(repo / ".slices" / "slice-001.md").status == "in-review"
+
+
+def test_babysit_blocks_when_pr_cannot_open(repo, tmp_path) -> None:
+    _write_slice(repo, "slice-001")
+    results = _babysit_daemon(repo, FakePR(fail=True), tmp_path).tick()
+    assert results[0].status == "blocked"
+    assert "PR failed" in results[0].detail
+
+
+def test_watcher_marks_merged_pr_done(repo, tmp_path) -> None:
+    _write_slice(repo, "slice-001", status="in-review")
+    pr = FakePR(states={"nightshift/slice-001": "MERGED"})
+    _babysit_daemon(repo, pr, tmp_path).tick()
+    assert Slice.load(repo / ".slices" / "slice-001.md").status == "done"
+
+
+def test_watcher_blocks_closed_pr(repo, tmp_path) -> None:
+    _write_slice(repo, "slice-001", status="in-review")
+    pr = FakePR(states={"nightshift/slice-001": "CLOSED"})
+    _babysit_daemon(repo, pr, tmp_path).tick()
+    assert Slice.load(repo / ".slices" / "slice-001.md").status == "blocked"
+
+
+def test_watcher_leaves_open_pr_and_survives_lookup_errors(repo, tmp_path) -> None:
+    _write_slice(repo, "slice-001", status="in-review")
+    _write_slice(repo, "slice-002", status="in-review")
+    pr = FakePR(states={"nightshift/slice-001": "OPEN"})  # slice-002 lookup raises
+    _babysit_daemon(repo, pr, tmp_path).tick()
+    assert Slice.load(repo / ".slices" / "slice-001.md").status == "in-review"
+    assert Slice.load(repo / ".slices" / "slice-002.md").status == "in-review"
+
+
+def test_babysit_blocks_when_rebase_fails(repo, tmp_path, monkeypatch) -> None:
+    import nightshift.daemon as d
+    from nightshift.pipeline import PrepResult
+
+    monkeypatch.setattr(d, "prepare_branch", lambda **kw: PrepResult(False, "rebase conflict"))
+    _write_slice(repo, "slice-001")
+    pr = FakePR()
+    results = _babysit_daemon(repo, pr, tmp_path).tick()
+    assert results[0].status == "blocked"
+    assert pr.opened == []
+
+
+def test_dependant_waits_for_merge(repo, tmp_path) -> None:
+    _write_slice(repo, "slice-001", status="in-review")
+    _write_slice(repo, "slice-002", deps=["slice-001"])
+    pr = FakePR(states={"nightshift/slice-001": "OPEN"})
+    assert _babysit_daemon(repo, pr, tmp_path).tick() == []  # nothing runnable yet
+
+
+def test_run_daemon_cli_wires_pr_for_babysit_repos(tmp_path, monkeypatch) -> None:
+    import nightshift.daemon as d
+
+    built = {}
+
+    class Recorder:
+        def __init__(self, path):
+            built["path"] = path
+
+    monkeypatch.setattr(d, "GitHubPR", Recorder)
+    monkeypatch.setattr(d, "build_source", lambda rc: LocalMdSource(tmp_path))
+    cfg = tmp_path / "c.yaml"
+    cfg.write_text(
+        f"repos:\n  r:\n    path: {tmp_path.as_posix()}\n    check: x\n    source: github-issues\n",
+        encoding="utf-8",
+    )
+    run_daemon_cli("r", config_path=cfg, once=True, executor=Executor(runner=Agent()))
+    assert built["path"] == tmp_path

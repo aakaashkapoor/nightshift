@@ -17,7 +17,8 @@ from pathlib import Path
 from .config import Config, RepoConfig
 from .executor import Executor
 from .notifier import NullNotifier, build_notifier
-from .pipeline import SliceResult, integrate_branch, run_slice
+from .pipeline import SliceResult, integrate_branch, prepare_branch, run_slice, sync_base
+from .pr import BABYSIT_LABEL, GitHubPR, open_pr_for_slice
 from .resolver import Resolver
 from .review import AgentReviewer
 from .scheduler import Dag
@@ -28,6 +29,7 @@ from .worktree import WorktreeManager
 IN_PROGRESS = "in-progress"
 DONE = "done"
 BLOCKED = "blocked"
+IN_REVIEW = "in-review"
 
 log = logging.getLogger("nightshift")
 _LOG_FMT = logging.Formatter("%(asctime)s  nightshift  %(message)s", "%H:%M:%S")
@@ -63,6 +65,7 @@ class Daemon:
         notifier=None,
         runtime=None,
         reviewer=None,
+        pr=None,
     ):
         self.source = source
         self.repo_cfg = repo_cfg
@@ -77,6 +80,7 @@ class Daemon:
         self.notifier = notifier or NullNotifier()
         self.runtime = runtime
         self.reviewer = reviewer
+        self.pr = pr
 
     def _select_batch(self, runnable: list[Slice]) -> list[Slice]:
         """Up to max_parallel mutually non-overlapping slices.
@@ -132,6 +136,8 @@ class Daemon:
         """Serial merge-train step for one committed branch (SPEC §6)."""
         if work.status != DONE:  # Work itself failed -> nothing to integrate
             return self._block(work, work.detail)
+        if self.repo_cfg.babysit:
+            return self._open_for_babysit(work)
         result = integrate_branch(
             repo_path=self.repo_cfg.path,
             worktree_path=self.worktrees.path_for(work.slice_id),
@@ -157,12 +163,63 @@ class Daemon:
             )
         return self._block(work, result.detail)
 
+    def _open_for_babysit(self, work: SliceResult) -> SliceResult:
+        """Babysit Ship (SPEC §9): rebase + re-check, open a labelled PR, stop."""
+        prep = prepare_branch(
+            worktree_path=self.worktrees.path_for(work.slice_id),
+            base_branch=self.repo_cfg.base_branch,
+            check_cmd=self.repo_cfg.check,
+            resolver=self.resolver,
+            resolve_attempts=self.resolve_attempts,
+        )
+        if not prep.ok:
+            return self._block(work, prep.detail)
+        sl = self.source.get(work.slice_id)
+        try:
+            url = open_pr_for_slice(
+                self.pr,
+                sl,
+                branch=work.branch,
+                base=self.repo_cfg.base_branch,
+                automerge=False,
+                labels=(BABYSIT_LABEL,),
+            )
+        except Exception as exc:  # gh/network failure must not kill the tick
+            return self._block(work, f"PR failed: {exc}")
+        self.worktrees.teardown(work.slice_id)  # the branch lives on origin now
+        self.source.set_status(work.slice_id, IN_REVIEW)
+        self.notifier.notify("in-review", f"{work.slice_id}: {url}")
+        return SliceResult(
+            work.slice_id, IN_REVIEW, work.attempts, work.commit, work.branch, url, work.session_id
+        )
+
+    def _watch_reviews(self, slices: list[Slice]) -> None:
+        """Pull merged work, then settle in-review slices whose PR merged or closed."""
+        cfg = self.repo_cfg
+        log.info("base: %s", sync_base(cfg.path, cfg.base_branch, cfg.sync))
+        for sl in slices:
+            if sl.status != IN_REVIEW:
+                continue
+            try:
+                state = self.pr.state(self.worktrees.branch_for(sl.id))
+            except Exception as exc:
+                log.warning("%s: PR state unknown (%s)", sl.id, exc)
+                continue
+            if state == "MERGED":
+                self.source.set_status(sl.id, DONE)
+                sl.status = DONE
+            elif state == "CLOSED":
+                self.source.set_blocked(sl.id, "PR closed without merging (babysit)")
+                sl.status = BLOCKED
+
     def tick(self) -> list[SliceResult]:
         """One pass: parallel Work on a non-overlapping batch, then a serial merge-train."""
         slices = self.source.list_all()
         if not slices:
             log.info("idle — no slices")
             return []
+        if self.repo_cfg.babysit:
+            self._watch_reviews(slices)
         if self.runtime is not None:
             self.runtime.reconcile(known_slice_ids={s.id for s in slices}, worktrees=self.worktrees)
         batch = self._select_batch(Dag.build(slices).runnable())
@@ -180,11 +237,13 @@ class Daemon:
         for r in results:
             if r.status == DONE:
                 log.info("%s done (%s)", r.slice_id, (r.commit or "")[:8])
+            elif r.status == IN_REVIEW:
+                log.info("%s in review: %s", r.slice_id, r.detail)
             else:
                 log.warning("%s BLOCKED — %s", r.slice_id, r.detail)
         if self.runtime is not None:
             for r in results:
-                if r.status == DONE:
+                if r.status in (DONE, IN_REVIEW):
                     self.runtime.forget(r.slice_id)
                 else:
                     self.runtime.record(r.slice_id, session_id=r.session_id, branch=r.branch)
@@ -225,6 +284,7 @@ def run_daemon_cli(
         resolver=Resolver(ex),
         reviewer=AgentReviewer(ex),
         notifier=build_notifier(cfg.defaults.get("notifier")),
+        pr=GitHubPR(repo_cfg.path) if repo_cfg.babysit else None,
     )
     if once:
         return daemon.tick()

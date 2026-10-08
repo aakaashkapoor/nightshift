@@ -46,6 +46,7 @@ testpaths = ["tests"]
 line-length = 100
 target-version = "py311"
 src = ["src"]
+extend-exclude = ["docs"]  # design docs hold illustrative snippets, not source
 
 [tool.ruff.lint]
 select = [

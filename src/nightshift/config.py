@@ -97,6 +97,9 @@ class RepoConfig:
     # install`) — a symlinked dir like node_modules can end up stale in the repo
     # even though the merge is clean; see integrate_branch's docstring.
     sync: str | None = None
+    # SPEC §9 / babysit: open a PR per slice and leave it for the driving agent to
+    # review + merge. Defaults on for github-issues repos (resolved in Config).
+    babysit: bool = False
 
 
 @dataclass
@@ -137,11 +140,18 @@ class Config:
     def _resolve(self, name: str, entry: dict) -> RepoConfig:
         if "check" not in entry:
             raise ValueError(f"repo {name!r} is missing a 'check' command")
+        source = entry.get("source", "local-md")
+        babysit = bool(entry.get("babysit", source == "github-issues"))
+        if babysit and source != "github-issues":
+            raise ValueError(
+                f"repo {name!r}: babysit needs PRs (source: github-issues); "
+                "set 'babysit: false' or switch the source"
+            )
         return RepoConfig(
             name=name,
             path=Path(entry["path"]).expanduser() if entry.get("path") else Path("."),
             check=entry["check"],
-            source=entry.get("source", "local-md"),
+            source=source,
             base_branch=entry.get("base_branch", "main"),
             pr=entry.get("pr", {"enabled": False}),
             external_review=entry.get(
@@ -152,4 +162,5 @@ class Config:
             symlink_dirs=entry.get("symlink_dirs", []),
             push=entry.get("push", False),
             sync=entry.get("sync"),
+            babysit=babysit,
         )

@@ -76,3 +76,25 @@ def test_missing_check_raises() -> None:
 def test_load_missing_file_raises(tmp_path) -> None:
     with pytest.raises(FileNotFoundError):
         Config.load(tmp_path / "nope.yaml")
+
+
+def _cfg(entry: str) -> Config:
+    return Config.parse(f"repos:\n  r:\n    path: .\n    check: x\n{entry}")
+
+
+def test_babysit_defaults_on_for_github_issues() -> None:
+    assert _cfg("    source: github-issues\n").repo("r").babysit is True
+
+
+def test_babysit_defaults_off_for_local_md() -> None:
+    assert _cfg("    source: local-md\n").repo("r").babysit is False
+
+
+def test_babysit_can_be_turned_off() -> None:
+    rc = _cfg("    source: github-issues\n    babysit: false\n").repo("r")
+    assert rc.babysit is False
+
+
+def test_babysit_on_local_md_is_an_error() -> None:
+    with pytest.raises(ValueError, match="babysit needs PRs"):
+        _cfg("    source: local-md\n    babysit: true\n").repo("r")

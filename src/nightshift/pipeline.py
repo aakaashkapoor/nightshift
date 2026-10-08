@@ -92,6 +92,12 @@ class IntegrationResult:
     detail: str
 
 
+@dataclass
+class PrepResult:
+    ok: bool
+    detail: str
+
+
 def _has_conflict_markers(cwd: Path | str) -> bool:
     """True if staged content still has leftover conflict markers (ignores whitespace)."""
     with _GIT_LOCK:
@@ -120,6 +126,52 @@ def _resolve_conflicted_rebase(worktree_path, resolver, attempts: int) -> bool:
         ):  # pragma: no branch
             return True
     return False
+
+
+def prepare_branch(
+    *,
+    worktree_path: Path | str,
+    base_branch: str,
+    check_cmd: str,
+    resolver=None,
+    resolve_attempts: int = 2,
+) -> PrepResult:
+    """Rebase a slice branch onto base and re-run the check, without merging.
+
+    The first half of the merge-train step; babysit's Ship path stops here and
+    opens a PR instead of merging (SPEC §9).
+    """
+    if not _git_ok(worktree_path, "rebase", base_branch):
+        resolved = resolver is not None and _resolve_conflicted_rebase(
+            worktree_path, resolver, resolve_attempts
+        )
+        if not resolved:
+            _git_ok(worktree_path, "rebase", "--abort")
+            return PrepResult(False, "unresolved conflict" if resolver else "rebase conflict")
+    if not run_check(check_cmd, worktree_path).passed:  # pragma: no cover - post-rebase red
+        return PrepResult(False, "check failed after rebase")
+    return PrepResult(True, "ready")
+
+
+def sync_base(repo_path: Path | str, base_branch: str, sync_cmd: str | None = None) -> str:
+    """Fast-forward the local base from origin (PRs merge on GitHub under babysit).
+
+    Best-effort, never raises: returns a short detail for the log. ``sync_cmd`` runs
+    only when the pull actually brought new commits.
+    """
+    try:
+        before = _git(repo_path, "rev-parse", base_branch)
+    except RuntimeError as exc:
+        return f"pull failed: {exc}"
+    if not _git_ok(repo_path, "pull", "--ff-only", "origin", base_branch):
+        return "pull failed (will retry next tick)"
+    if _git(repo_path, "rev-parse", base_branch) == before:
+        return "up to date"
+    if sync_cmd:
+        result = run_check(sync_cmd, repo_path)
+        if not result.passed:
+            return "pulled; sync failed: " + result.output[-300:].strip()
+    return "pulled"
 
 
 def integrate_branch(
@@ -154,17 +206,15 @@ def integrate_branch(
     the next slice's sync/push, which reconciles against the *current* lockfile/
     branch state regardless of what this slice added.
     """
-    if not _git_ok(worktree_path, "rebase", base_branch):
-        resolved = resolver is not None and _resolve_conflicted_rebase(
-            worktree_path, resolver, resolve_attempts
-        )
-        if not resolved:
-            _git_ok(worktree_path, "rebase", "--abort")
-            detail = "unresolved conflict" if resolver else "rebase conflict"
-            return IntegrationResult(False, None, detail)
-
-    if not run_check(check_cmd, worktree_path).passed:  # pragma: no cover - post-rebase red
-        return IntegrationResult(False, None, "check failed after rebase")
+    prep = prepare_branch(
+        worktree_path=worktree_path,
+        base_branch=base_branch,
+        check_cmd=check_cmd,
+        resolver=resolver,
+        resolve_attempts=resolve_attempts,
+    )
+    if not prep.ok:
+        return IntegrationResult(False, None, prep.detail)
 
     try:
         _git(repo_path, "merge", "--ff-only", branch)

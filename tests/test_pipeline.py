@@ -231,3 +231,122 @@ def test_integrate_survives_push_failure(tmp_path) -> None:
     )
     assert result.merged  # local merge still counts
     assert "push failed" in result.detail
+
+
+def test_prepare_branch_rebases_and_checks_without_merging(tmp_path) -> None:
+    from nightshift.pipeline import prepare_branch
+
+    repo, wt = _repo_with_worktree(tmp_path)
+    (repo / "other.txt").write_text("o", encoding="utf-8")  # base moves on
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-m", "other")
+
+    result = prepare_branch(worktree_path=wt.path, base_branch="main", check_cmd="echo ok")
+
+    assert result.ok
+    assert (wt.path / "other.txt").exists()  # rebased onto the new base
+    assert "new.txt" not in _git(repo, "ls-tree", "--name-only", "main")  # not merged
+
+
+def test_prepare_branch_reports_conflict(tmp_path) -> None:
+    from nightshift.pipeline import prepare_branch
+
+    repo, wt = _repo_with_worktree(tmp_path)
+    (repo / "new.txt").write_text("clash", encoding="utf-8")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-m", "clash")
+
+    result = prepare_branch(worktree_path=wt.path, base_branch="main", check_cmd="echo ok")
+
+    assert not result.ok
+    assert result.detail == "rebase conflict"
+
+
+def _clone_with_origin(tmp_path):
+    bare = tmp_path / "origin.git"
+    subprocess.run(
+        ["git", "init", "--bare", "-b", "main", str(bare)], check=True, capture_output=True
+    )
+    repo = tmp_path / "repo"
+    subprocess.run(["git", "clone", str(bare), str(repo)], check=True, capture_output=True)
+    _git(repo, "config", "user.email", "t@e.local")
+    _git(repo, "config", "user.name", "T")
+    (repo / "README.md").write_text("hi\n", encoding="utf-8")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-m", "init")
+    _git(repo, "push", "origin", "main")
+    return bare, repo
+
+
+def test_sync_base_pulls_merged_work_and_runs_sync(tmp_path) -> None:
+    from nightshift.pipeline import sync_base
+
+    bare, repo = _clone_with_origin(tmp_path)
+    other = tmp_path / "other"
+    subprocess.run(["git", "clone", str(bare), str(other)], check=True, capture_output=True)
+    _git(other, "config", "user.email", "t@e.local")
+    _git(other, "config", "user.name", "T")
+    (other / "merged.txt").write_text("m", encoding="utf-8")  # "a PR merged on GitHub"
+    _git(other, "add", "-A")
+    _git(other, "commit", "-m", "merged pr")
+    _git(other, "push", "origin", "main")
+
+    marker = repo / "synced.flag"
+    detail = sync_base(repo, "main", sync_cmd=f"\"{sys.executable}\" -c \"open(r'{marker}', 'w')\"")
+
+    assert (repo / "merged.txt").exists()
+    assert marker.exists()
+    assert detail == "pulled"
+
+
+def test_sync_base_noop_when_up_to_date(tmp_path) -> None:
+    from nightshift.pipeline import sync_base
+
+    _bare, repo = _clone_with_origin(tmp_path)
+    assert sync_base(repo, "main", sync_cmd="exit 1") == "up to date"  # sync not run
+
+
+def test_sync_base_reports_pull_failure(tmp_path) -> None:
+    from nightshift.pipeline import sync_base
+
+    repo, _wt = _repo_with_worktree(tmp_path)  # no origin remote
+    assert sync_base(repo, "main").startswith("pull failed")
+
+
+def test_sync_base_survives_non_repo(tmp_path) -> None:
+    from nightshift.pipeline import sync_base
+
+    assert sync_base(tmp_path, "main").startswith("pull failed")
+
+
+def test_sync_base_reports_sync_failure(tmp_path) -> None:
+    from nightshift.pipeline import sync_base
+
+    bare, repo = _clone_with_origin(tmp_path)
+    other = tmp_path / "other"
+    subprocess.run(["git", "clone", str(bare), str(other)], check=True, capture_output=True)
+    _git(other, "config", "user.email", "t@e.local")
+    _git(other, "config", "user.name", "T")
+    (other / "m.txt").write_text("m", encoding="utf-8")
+    _git(other, "add", "-A")
+    _git(other, "commit", "-m", "m")
+    _git(other, "push", "origin", "main")
+
+    assert sync_base(repo, "main", sync_cmd="exit 1").startswith("pulled; sync failed")
+
+
+def test_sync_base_pulls_without_sync_cmd(tmp_path) -> None:
+    from nightshift.pipeline import sync_base
+
+    bare, repo = _clone_with_origin(tmp_path)
+    other = tmp_path / "other"
+    subprocess.run(["git", "clone", str(bare), str(other)], check=True, capture_output=True)
+    _git(other, "config", "user.email", "t@e.local")
+    _git(other, "config", "user.name", "T")
+    (other / "m.txt").write_text("m", encoding="utf-8")
+    _git(other, "add", "-A")
+    _git(other, "commit", "-m", "m")
+    _git(other, "push", "origin", "main")
+
+    assert sync_base(repo, "main") == "pulled"
+    assert (repo / "m.txt").exists()

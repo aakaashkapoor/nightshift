@@ -1,6 +1,12 @@
 """Tests for the PR flow (injected git + gh runners)."""
 
-from nightshift.pr import GitHubPR, build_pr_body, issue_number_for, open_pr_for_slice
+from nightshift.pr import (
+    BABYSIT_LABEL,
+    GitHubPR,
+    build_pr_body,
+    issue_number_for,
+    open_pr_for_slice,
+)
 from nightshift.slice import Slice
 
 
@@ -71,3 +77,32 @@ def test_open_pr_for_slice_no_automerge_leaves_pr_open() -> None:
     )
 
     assert not any(c[0:2] == ("pr", "merge") for c in gh.calls)  # awaits human sign-off
+
+
+def test_open_with_labels_ensures_label_and_attaches_it() -> None:
+    git, gh = FakeRunner(), FakeRunner(ret="url")
+    GitHubPR(git=git, gh=gh).open(
+        branch="b", base="main", title="t", body="x", labels=(BABYSIT_LABEL,)
+    )
+    assert gh.calls[0] == ("label", "create", BABYSIT_LABEL, "--force")
+    create = gh.calls[1]
+    assert create[create.index("--label") + 1] == BABYSIT_LABEL
+
+
+def test_open_pr_for_slice_passes_labels() -> None:
+    gh = FakeRunner(ret="url")
+    open_pr_for_slice(
+        GitHubPR(git=FakeRunner(), gh=gh),
+        _slice("issue-42"),
+        branch="b",
+        base="main",
+        automerge=False,
+        labels=(BABYSIT_LABEL,),
+    )
+    assert any("--label" in c for c in gh.calls)
+
+
+def test_state_reads_pr_state() -> None:
+    gh = FakeRunner(ret='{"state": "MERGED"}')
+    assert GitHubPR(git=FakeRunner(), gh=gh).state("nightshift/issue-42") == "MERGED"
+    assert gh.calls[0] == ("pr", "view", "nightshift/issue-42", "--json", "state")

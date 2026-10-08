@@ -8,10 +8,13 @@ through injectable runners so this is unit-testable without a live remote.
 
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 
 from ._exe import GH_DIRS, which
+
+BABYSIT_LABEL = "nightshift:babysit"
 
 
 def issue_number_for(slice_id: str) -> str | None:
@@ -53,29 +56,31 @@ class GitHubPR:
         self.git = git or _runner("git", repo_path)
         self.gh = gh or _runner("gh", repo_path)
 
-    def open(self, *, branch: str, base: str, title: str, body: str) -> str:
+    def open(
+        self, *, branch: str, base: str, title: str, body: str, labels: tuple[str, ...] = ()
+    ) -> str:
         """Push the branch and open a PR; returns the PR URL."""
         self.git("push", "-u", "origin", branch)
-        return self.gh(
-            "pr",
-            "create",
-            "--head",
-            branch,
-            "--base",
-            base,
-            "--title",
-            title,
-            "--body",
-            body,
-        )
+        for label in labels:
+            self.gh("label", "create", label, "--force")  # idempotent: create or update
+        args = ["pr", "create", "--head", branch, "--base", base, "--title", title, "--body", body]
+        if labels:
+            args += ["--label", ",".join(labels)]
+        return self.gh(*args)
+
+    def state(self, branch: str) -> str:
+        """The PR's state for this head branch: OPEN, MERGED or CLOSED."""
+        return json.loads(self.gh("pr", "view", branch, "--json", "state"))["state"]
 
     def automerge(self, branch: str) -> None:
         self.gh("pr", "merge", branch, "--squash", "--auto")
 
 
-def open_pr_for_slice(pr: GitHubPR, sl, *, branch: str, base: str, automerge: bool) -> str:
+def open_pr_for_slice(
+    pr: GitHubPR, sl, *, branch: str, base: str, automerge: bool, labels: tuple[str, ...] = ()
+) -> str:
     body = build_pr_body(sl, closes_issue=issue_number_for(sl.id))
-    url = pr.open(branch=branch, base=base, title=sl.title, body=body)
+    url = pr.open(branch=branch, base=base, title=sl.title, body=body, labels=labels)
     if automerge:
         pr.automerge(branch)
     return url

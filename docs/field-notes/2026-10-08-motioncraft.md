@@ -118,6 +118,11 @@ which broke `vitest` (the `check`) for every slice. It also left
 - Deleting a review folder containing a junction with `rm -rf` (Git Bash)
   deleted the **real** `node_modules` in the main checkout. That broke the next
   check and needed a full reinstall.
+- It also breaks the other way: the post-merge `npm ci` in the main checkout
+  (2026-10-09) ran while a slice was checking through its junction. The
+  install was left half-done (8 packages, no `.bin`), so the slice's check
+  failed and it was marked BLOCKED for a reason that had nothing to do with
+  its code.
 - **Fix:** don't share `node_modules` by default. Use `npm ci` per worktree
   (with npm's cache it's fast), or pnpm's store. If junctions stay, always
   remove the junction itself first (`rmdir`), never recurse through it, and

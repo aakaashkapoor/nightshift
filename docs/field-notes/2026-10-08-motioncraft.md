@@ -183,6 +183,42 @@ overlap. Hand-filed issues had shared directory hints that would serialise
 work.
 - **Fix:** separate `## Touches` (scheduler) from `## Scope hints` (agent).
 
+## Integration across waves
+
+### 🔴 22. With babysit on, merge conflicts land on the reviewing agent
+When `main` moves while a PR waits, Nightshift leaves the PR conflicting and
+the reviewing agent has to resolve it. PR #53 (VideoClip) predated #52
+(transitions) and conflicted in 7 files; resolving them took a full session
+handoff.
+- **Fix:** Nightshift should rebase its own open PRs (re-running the slice's
+  agent on the conflict) whenever `main` moves, before asking for review.
+
+### 🔴 23. Parallel PRs built the same thing twice
+Two sibling slices both created a `windows.ts` barrel, and two window-chrome
+implementations (`AppWindow` and `WindowChrome`) shipped side by side. Each PR
+was fine; together they duplicate.
+- **Fix:** same root cause as #6. A shared "contracts" slice (types, file
+  names, which component owns what) should run first, and siblings depend on it.
+
+### 🟡 24. Union-merging registry files duplicated whole files
+Taking both sides of `src/index.ts` / `src/kit/index.ts` conflicts, hunk by
+hunk, duplicated a whole file's contents twice.
+- **Fix:** rebuild registries from `main` plus each branch's added lines
+  (or generate them), never union whole hunks. See #7.
+
+### 🟡 25. An integration contract existed but wasn't shared
+`Section` passes an `area` slot to its child, but most kit components ignore
+it, so a Card overlapped the Section headline in 16:9 (now issue #54).
+- **Fix:** when a slice introduces a contract that other components must
+  honour, the slicer should file follow-ups for each consumer, or add a check
+  that every component accepts it.
+
+### 🟡 26. Siblings need a contracts-first rule written down
+Notes #6, #23 and #25 have one cause. A rule in the target repo's AGENTS.md
+(or in `nightshift-slice`) would prevent them: "if two slices add to the same
+concept, first slice the shared contract; implementers depend on it."
+- **Fix:** add that rule to the slicer skill and to the AGENTS.md template.
+
 ## Good things worth keeping
 
 - `nsh resume` reattached to preserved worktrees and finished slices that had

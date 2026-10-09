@@ -224,6 +224,18 @@ Notes #6, #23 and #25 have one cause. A rule in the target repo's AGENTS.md
 concept, first slice the shared contract; implementers depend on it."
 - **Fix:** add that rule to the slicer skill and to the AGENTS.md template.
 
+### 🔴 27. The daemon stalled, then died, without saying why
+After #59 merged (02:50), the last open slice (#41, deps #40 and #59, both
+closed) stayed "none runnable" for 95 ticks. Running the same code by hand
+(`GitHubIssuesSource.list_all()` + `Dag.runnable()`) returned `issue-41`. The
+process then exited around 04:27 with nothing in the log. A restart at 09:52
+picked #41 up on its first tick. About seven hours were lost overnight, which
+is exactly when Nightshift is supposed to work.
+- **Fix:** log *why* each ready slice isn't runnable (which dependency, with
+  its status) at least when that set changes; log on exit (including signals
+  and uncaught errors); and run the daemon under a supervisor that restarts it
+  and notifies the driver.
+
 ## Good things worth keeping
 
 - `nsh resume` reattached to preserved worktrees and finished slices that had

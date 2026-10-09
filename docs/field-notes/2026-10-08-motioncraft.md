@@ -246,6 +246,18 @@ Nothing in the log said why.
   hints from list items or a code span per line; warn when two issues share
   every hint.
 
+### 🔴 29. A usage limit looks like a git error, and burns the queue
+At 14:07 the account hit its usage limit mid-batch. Every `claude -p` run
+stopped before writing anything, so each slice failed at `git commit` with an
+empty error ("nothing to commit" goes to stdout). Five slices were marked
+BLOCKED with "git commit ... failed:", and the daemon then started the next
+ready slice, which failed the same way in 45 seconds. Nothing said "usage
+limit". Recovery meant tearing down six empty worktrees and relabelling.
+- **Fix:** read the executor's JSON (`is_error`, the result text) and recognise
+  rate/usage-limit errors; then pause the daemon until the reset time instead of
+  blocking slices. Treat "no changes" as its own failure with the agent's last
+  message, not a git error.
+
 ## Good things worth keeping
 
 - `nsh resume` reattached to preserved worktrees and finished slices that had

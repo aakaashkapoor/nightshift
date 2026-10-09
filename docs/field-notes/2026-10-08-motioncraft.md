@@ -236,6 +236,16 @@ is exactly when Nightshift is supposed to work.
   and uncaught errors); and run the daemon under a supervisor that restarts it
   and notifies the driver.
 
+### 🟡 28. Text after "## Scope hints" silently becomes hints
+`scope_hints()` collects every path-like token until the next `## ` heading. The
+v3 issues ended with a shared paragraph after the hints ("read
+`docs/design-v3.md` and `AGENTS.md` ... `src/index.ts` ... `scripts/stills.ts`"),
+so all nine parallel issues "overlapped" and the daemon ran them one at a time.
+Nothing in the log said why.
+- **Fix:** log the overlap that kept a runnable slice out of a batch; only read
+  hints from list items or a code span per line; warn when two issues share
+  every hint.
+
 ## Good things worth keeping
 
 - `nsh resume` reattached to preserved worktrees and finished slices that had

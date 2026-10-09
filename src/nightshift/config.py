@@ -100,6 +100,13 @@ class RepoConfig:
     # SPEC §9 / babysit: open a PR per slice and leave it for the driving agent to
     # review + merge. Defaults on for github-issues repos (resolved in Config).
     babysit: bool = False
+    # Claude model and effort for every headless run (`--model` / `--effort`).
+    # None leaves it to the CLI's own default (the user's settings).
+    model: str | None = None
+    effort: str | None = None
+
+
+EFFORTS = ("low", "medium", "high", "xhigh", "max")
 
 
 @dataclass
@@ -147,6 +154,11 @@ class Config:
                 f"repo {name!r}: babysit needs PRs (source: github-issues); "
                 "set 'babysit: false' or switch the source"
             )
+        effort = entry.get("effort", self.defaults.get("effort"))
+        if effort is not None and effort not in EFFORTS:
+            raise ValueError(
+                f"repo {name!r}: effort must be one of {', '.join(EFFORTS)} (got {effort!r})"
+            )
         return RepoConfig(
             name=name,
             path=Path(entry["path"]).expanduser() if entry.get("path") else Path("."),
@@ -163,4 +175,6 @@ class Config:
             push=entry.get("push", False),
             sync=entry.get("sync"),
             babysit=babysit,
+            model=entry.get("model", self.defaults.get("model")),
+            effort=effort,
         )

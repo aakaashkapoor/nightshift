@@ -358,7 +358,7 @@ def run_slice_cli(
         repo_path=repo_cfg.path,
         check_cmd=repo_cfg.check,
         worktrees=WorktreeManager(repo_cfg.path, symlink_dirs=repo_cfg.symlink_dirs),
-        executor=executor if executor is not None else Executor(),
+        executor=executor if executor is not None else Executor.for_repo(repo_cfg),
         base_branch=repo_cfg.base_branch,
     )
 
@@ -381,7 +381,7 @@ def run_resume_cli(
 
     worktrees = WorktreeManager(repo_cfg.path, symlink_dirs=repo_cfg.symlink_dirs)
     runtime = Runtime(runtime_path)
-    ex = executor if executor is not None else Executor()
+    ex = executor if executor is not None else Executor.for_repo(repo_cfg)
 
     resumed = resume_slice(
         sl,

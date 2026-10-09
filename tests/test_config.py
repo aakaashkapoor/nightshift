@@ -98,3 +98,26 @@ def test_babysit_can_be_turned_off() -> None:
 def test_babysit_on_local_md_is_an_error() -> None:
     with pytest.raises(ValueError, match="babysit needs PRs"):
         _cfg("    source: local-md\n    babysit: true\n").repo("r")
+
+
+def test_model_and_effort_default_to_none() -> None:
+    repo = Config.parse(SAMPLE).repo("my-app")
+    assert repo.model is None and repo.effort is None
+
+
+def test_model_and_effort_from_defaults_then_repo() -> None:
+    text = """
+defaults: { model: claude-opus-5-5, effort: high }
+repos:
+  a: { path: ., check: "true" }
+  b: { path: ., check: "true", effort: xhigh }
+"""
+    cfg = Config.parse(text)
+    assert (cfg.repo("a").model, cfg.repo("a").effort) == ("claude-opus-5-5", "high")
+    assert (cfg.repo("b").model, cfg.repo("b").effort) == ("claude-opus-5-5", "xhigh")
+
+
+def test_unknown_effort_is_an_error() -> None:
+    cfg = Config.parse('repos:\n  a: { path: ., check: "true", effort: turbo }\n')
+    with pytest.raises(ValueError, match="effort"):
+        cfg.repo("a")

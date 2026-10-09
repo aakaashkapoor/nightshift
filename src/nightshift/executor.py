@@ -88,11 +88,18 @@ class Executor:
         permission_mode: str = "bypassPermissions",
         model: str | None = None,
         claude_bin: str = CLAUDE_BIN,
+        effort: str | None = None,
     ):
         self.runner = runner
         self.permission_mode = permission_mode
         self.model = model
+        self.effort = effort
         self.claude_bin = claude_bin
+
+    @classmethod
+    def for_repo(cls, repo) -> Executor:
+        """A real executor with the repo's configured model and effort."""
+        return cls(model=repo.model, effort=repo.effort)
 
     def build_argv(self, resume_session: str | None = None) -> list[str]:
         argv = [
@@ -105,6 +112,8 @@ class Executor:
         ]
         if self.model:
             argv += ["--model", self.model]
+        if self.effort:
+            argv += ["--effort", self.effort]
         if resume_session:
             argv += ["--resume", resume_session]
         return argv

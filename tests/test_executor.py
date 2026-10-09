@@ -89,3 +89,16 @@ def test_execute_handles_non_json_output() -> None:
     assert result.succeeded is True
     assert result.session_id is None
     assert result.result_text == "not json at all"
+
+
+def test_build_argv_with_effort() -> None:
+    argv = Executor(model="claude-opus-5-5", effort="xhigh").build_argv()
+    assert argv[-4:] == ["--model", "claude-opus-5-5", "--effort", "xhigh"]
+
+
+def test_for_repo_takes_model_and_effort(tmp_path) -> None:
+    from nightshift.config import RepoConfig
+
+    repo = RepoConfig(name="r", path=tmp_path, check="true", model="m", effort="high")
+    ex = Executor.for_repo(repo)
+    assert (ex.model, ex.effort) == ("m", "high")

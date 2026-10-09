@@ -276,7 +276,8 @@ def run_daemon_cli(
     """`nsh daemon` glue: build a Daemon from config and tick once or run forever."""
     cfg = Config.load(config_path)
     repo_cfg = cfg.repo(str(repo))
-    ex = executor if executor is not None else Executor()
+    ex = executor if executor is not None else Executor.for_repo(repo_cfg)
+    log.info("claude: model %s, effort %s", ex.model or "CLI default", ex.effort or "CLI default")
     daemon = Daemon(
         source=build_source(repo_cfg),
         repo_cfg=repo_cfg,

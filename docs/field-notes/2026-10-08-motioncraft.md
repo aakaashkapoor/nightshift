@@ -258,6 +258,17 @@ limit". Recovery meant tearing down six empty worktrees and relabelling.
   blocking slices. Treat "no changes" as its own failure with the agent's last
   message, not a git error.
 
+### 📝 30. Owner's planned change to the work prompt (noted 2026-10-09, not done yet)
+The work prompt is a three-line wrapper around the issue body, so each run
+jumps straight into code. The owner wants it to say:
+- first write a **technical spec** for the slice using the **superpowers**
+  skills (brainstorming / writing-plans), and
+- then do the work with **subagent-driven development** (split the plan into
+  small tasks, dispatch subagents, wait for them, review).
+The owner will update this himself later. Related gap found the same day: on a
+red check, the retry resumes the session with the same prompt and never passes
+the check's output, so the agent has to rediscover what failed.
+
 ## Good things worth keeping
 
 - `nsh resume` reattached to preserved worktrees and finished slices that had

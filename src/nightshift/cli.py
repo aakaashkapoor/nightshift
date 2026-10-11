@@ -162,3 +162,36 @@ def wait(
     if not events:
         typer.echo(json.dumps({"kind": "timeout"}))
         raise typer.Exit(code=2)
+
+
+def _control(action: str, repo: Path, config: Path | None) -> None:
+    from nightshift import wait as wait_mod
+
+    typer.echo(wait_mod.run_control_cli(repo, action, config_path=config))
+
+
+@app.command()
+def pause(
+    repo: Path = typer.Option(Path("."), "--repo", help="Target repo (default: current dir)"),
+    config: Path | None = typer.Option(None, "--config", help="Config file"),
+) -> None:
+    """Stop starting new slices (running ones finish). Undo with `nsh unpause`."""
+    _control("pause", repo, config)
+
+
+@app.command()
+def unpause(
+    repo: Path = typer.Option(Path("."), "--repo", help="Target repo (default: current dir)"),
+    config: Path | None = typer.Option(None, "--config", help="Config file"),
+) -> None:
+    """Let the daemon start new slices again."""
+    _control("unpause", repo, config)
+
+
+@app.command()
+def stop(
+    repo: Path = typer.Option(Path("."), "--repo", help="Target repo (default: current dir)"),
+    config: Path | None = typer.Option(None, "--config", help="Config file"),
+) -> None:
+    """Exit the daemon once the running slices finish."""
+    _control("stop", repo, config)

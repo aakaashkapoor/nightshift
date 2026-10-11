@@ -8,6 +8,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from .config import Config
+from .control import Control
 from .events import ATTENTION, EventLog
 from .paths import repo_home
 from .state import StateStore, render_status
@@ -63,3 +64,16 @@ def run_status_cli(repo, *, config_path=None, as_json=False, home_root=None, now
     if as_json:
         return json.dumps(snapshot, indent=2)
     return render_status(snapshot, time.time() if now is None else now)
+
+
+_CONTROL = {
+    "pause": ({"paused": True}, "paused: no new slices will start"),
+    "unpause": ({"paused": False}, "unpaused"),
+    "stop": ({"stop": True}, "stopping: the daemon exits after the running slices finish"),
+}
+
+
+def run_control_cli(repo, action: str, *, config_path=None, home_root=None) -> str:
+    flags, message = _CONTROL[action]
+    Control(_home(repo, config_path, home_root) / "control.json").set(**flags)
+    return message

@@ -18,6 +18,9 @@ pr_app = typer.Typer(
 )
 app.add_typer(pr_app, name="pr")
 
+issue_app = typer.Typer(help="File and relabel issues deterministically.", no_args_is_help=True)
+app.add_typer(issue_app, name="issue")
+
 
 @app.callback()
 def main() -> None:
@@ -286,3 +289,70 @@ def pr_comment(
     from nightshift import prtools
 
     _pr_step(lambda: prtools.comment_cli(number, text, repo))
+
+
+def _issue_step(step) -> None:
+    """Run one `nsh issue` step; any failure is one clear line and a non-zero exit."""
+    try:
+        typer.echo(step())
+    except (ValueError, RuntimeError) as exc:
+        typer.echo(f"error: {exc}")
+        raise typer.Exit(code=1) from exc
+
+
+@issue_app.command("new")
+def issue_new(
+    title: str = typer.Option(..., "--title", help="Issue title"),
+    size: str | None = typer.Option(None, "--size", help="S | M | L"),
+    goal: str | None = typer.Option(None, "--goal", help="What and why"),
+    acceptance: list[str] = typer.Option([], "--acceptance", help="Repeat per item"),
+    touches: list[str] = typer.Option([], "--touches", help="Existing file or dir; repeat"),
+    decision: list[str] = typer.Option([], "--decision", help="Repeat per decision"),
+    owns: list[str] = typer.Option([], "--owns", help="What this issue creates; repeat"),
+    uses: list[str] = typer.Option([], "--uses", help="What it must import, not redefine"),
+    out_of_scope: list[str] = typer.Option([], "--out-of-scope", help="Repeat per item"),
+    subtasks_file: Path | None = typer.Option(None, "--subtasks-file", help="Subtasks markdown"),
+    depends: list[str] = typer.Option([], "--depends", help="Issue number; repeat"),
+    review: bool = typer.Option(False, "--review", help="Wait for babysit instead of auto-merge"),
+    visual: bool = typer.Option(False, "--visual", help="Output must be looked at"),
+    body_file: Path | None = typer.Option(None, "--body-file", help="A complete v2 body"),
+    repo: Path = typer.Option(Path("."), "--repo", help="Target repo (default: current dir)"),
+) -> None:
+    """File a linted v2 issue labelled nightshift:ready; prints its URL."""
+    from nightshift import issues
+
+    def step() -> str:
+        if body_file is not None:
+            body = body_file.read_text(encoding="utf-8")
+        elif size is None or goal is None:
+            raise ValueError("give --size and --goal (and --acceptance/--touches), or --body-file")
+        else:
+            body = issues.render_issue(
+                size=size.upper(),
+                goal=goal,
+                acceptance=acceptance,
+                touches=touches,
+                decisions=decision,
+                owns=owns,
+                uses=uses,
+                out_of_scope=out_of_scope,
+                subtasks=subtasks_file.read_text(encoding="utf-8") if subtasks_file else "",
+                depends=depends,
+            )
+        return issues.new_cli(repo, title=title, body=body, review=review, visual=visual)
+
+    _issue_step(step)
+
+
+@issue_app.command("set")
+def issue_set(
+    number: int = typer.Argument(..., help="Issue number"),
+    action: str = typer.Argument(
+        ..., help="ready | review | no-review | visual | no-visual | hold"
+    ),
+    repo: Path = typer.Option(Path("."), "--repo", help="Target repo (default: current dir)"),
+) -> None:
+    """Change an issue's labels; the only supported way."""
+    from nightshift import issues
+
+    _issue_step(lambda: issues.set_cli(repo, number, action))

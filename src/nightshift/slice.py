@@ -80,6 +80,7 @@ class Slice:
     attempts: int = 0
     jira: str | None = None
     body: str = ""
+    labels: set[str] = field(default_factory=set)  # issue labels (GitHub source)
     _meta: Any = None  # ruamel map retained for format-preserving write-back
 
     @classmethod

@@ -3,6 +3,7 @@
 import json
 
 from nightshift.github import GitHubIssuesSource
+from nightshift.slice import Slice
 
 
 class FakeGh:
@@ -134,3 +135,18 @@ def test_append_to_section_tolerates_an_empty_body() -> None:
     gh = Gh(ISSUES)
     GitHubIssuesSource(".", gh=gh).append_to_section("issue-7", "Answers", "- yes")
     assert gh.calls[1][-1] == "\n## Answers\n- yes\n"
+
+
+def test_slices_carry_their_issue_labels() -> None:
+    issues = [
+        {
+            "number": 7,
+            "title": "T",
+            "body": "b",
+            "labels": [{"name": "nightshift:ready"}, {"name": "review"}],
+            "state": "OPEN",
+        }
+    ]
+    src = GitHubIssuesSource(".", gh=FakeGh(issues))
+    assert src.get("issue-7").labels == {"nightshift:ready", "review"}
+    assert Slice(id="x", title="t", status="ready").labels == set()

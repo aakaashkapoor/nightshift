@@ -368,8 +368,11 @@ def test_run_daemon_cli_once(repo, tmp_path) -> None:
 class FakePR:
     """Records opened PRs; answers state() from a dict keyed by branch."""
 
-    def __init__(self, states=None, fail=False):
+    def __init__(self, states=None, fail=False, merge_error=None):
         self.opened = []
+        self.bodies = []
+        self.merged = []
+        self.merge_error = merge_error
         self.states = states or {}
         self.fail = fail
 
@@ -377,7 +380,13 @@ class FakePR:
         if self.fail:
             raise RuntimeError("gh down")
         self.opened.append((branch, labels))
+        self.bodies.append(body)
         return f"https://gh/pr/{branch}"
+
+    def merge(self, branch):
+        if self.merge_error:
+            raise RuntimeError(self.merge_error)
+        self.merged.append(branch)
 
     def automerge(self, branch):  # pragma: no cover - babysit never automerges
         raise AssertionError("babysit must not automerge")
@@ -388,26 +397,101 @@ class FakePR:
         return self.states[branch]
 
 
-def _babysit_daemon(repo, pr, tmp_path):
+class LabelledSource(LocalMdSource):
+    """A local source whose slices carry issue labels (as the GitHub source's do)."""
+
+    def __init__(self, repo, labels):
+        super().__init__(repo)
+        self.labels = labels
+
+    def get(self, slice_id):
+        sl = super().get(slice_id)
+        if sl is not None:
+            sl.labels = set(self.labels)
+        return sl
+
+
+class DecisionAgent(Agent):
+    def __call__(self, argv, cwd, stdin) -> RunOutput:
+        out = super().__call__(argv, cwd, stdin)
+        result = Path(cwd, ".nightshift", "result.json")
+        result.parent.mkdir(exist_ok=True)
+        result.write_text(
+            json.dumps({"outcome": "done", "decisions": ["used zod"]}), encoding="utf-8"
+        )
+        return out
+
+
+def _babysit_daemon(repo, pr, tmp_path, labels=(), agent=None, **kw):
     cfg = RepoConfig(name="r", path=repo, check="echo ok", babysit=True)
     return Daemon(
-        source=LocalMdSource(repo),  # status mechanics are source-agnostic
+        source=LabelledSource(repo, labels),  # status mechanics are source-agnostic
         repo_cfg=cfg,
-        executor=Executor(runner=Agent()),
+        executor=Executor(runner=agent or Agent()),
         worktrees=WorktreeManager(repo, worktrees_root=tmp_path / "wts"),
         pr=pr,
+        **kw,
     )
 
 
-def test_babysit_opens_pr_and_does_not_merge(repo, tmp_path) -> None:
+def _events(path) -> list[dict]:
+    return [json.loads(x) for x in path.read_text(encoding="utf-8").splitlines()]
+
+
+def test_review_labelled_issue_opens_pr_and_waits(repo, tmp_path) -> None:
     _write_slice(repo, "slice-001")
     pr = FakePR()
-    results = _babysit_daemon(repo, pr, tmp_path).tick()
+    results = _babysit_daemon(repo, pr, tmp_path, labels=["review"]).tick()
 
     assert results[0].status == "in-review"
     assert pr.opened == [("nightshift/slice-001", ("nightshift:babysit",))]
+    assert pr.merged == []
     assert "slice-001.txt" not in _main_files(repo)  # NOT merged locally
     assert Slice.load(repo / ".slices" / "slice-001.md").status == "in-review"
+
+
+def test_issue_without_review_label_is_merged_by_nightshift(repo, tmp_path) -> None:
+    from nightshift.events import EventLog
+    from nightshift.state import StateStore
+
+    _write_slice(repo, "slice-001")
+    pr = FakePR()
+    events = EventLog(tmp_path / "events.jsonl")
+    state = StateStore(tmp_path / "state.json")
+    d = _babysit_daemon(repo, pr, tmp_path, events=events, state=state)
+    results = d.tick()
+
+    assert results[0].status == "done" and results[0].detail == "merged"
+    assert pr.opened and pr.merged == ["nightshift/slice-001"]
+    assert Slice.load(repo / ".slices" / "slice-001.md").status == "done"  # not stuck in-review
+    assert not d.worktrees.exists("slice-001")
+    assert state.snapshot()["slices"] == {}
+    merged = [e for e in _events(events.path) if e["kind"] == "merged"]
+    assert len(merged) == 1
+    assert merged[0]["slice"] == "slice-001"
+    assert merged[0]["pr"] == "https://gh/pr/nightshift/slice-001"
+
+
+def test_failed_auto_merge_falls_back_to_review(repo, tmp_path) -> None:
+    from nightshift.events import EventLog
+
+    _write_slice(repo, "slice-001")
+    events = EventLog(tmp_path / "events.jsonl")
+    pr = FakePR(merge_error="not mergeable: CONFLICTING")
+    results = _babysit_daemon(repo, pr, tmp_path, events=events).tick()
+
+    assert results[0].status == "in-review"
+    assert Slice.load(repo / ".slices" / "slice-001.md").status == "in-review"
+    ready = next(e for e in _events(events.path) if e["kind"] == "review_ready")
+    assert ready["reason"] == "auto-merge failed: not mergeable: CONFLICTING"
+
+
+def test_pr_body_carries_the_agents_decisions(repo, tmp_path) -> None:
+    _write_slice(repo, "slice-001")
+    pr = FakePR()
+    d = _babysit_daemon(repo, pr, tmp_path, agent=DecisionAgent(), result_contract=True)
+    d.tick()
+    assert "## Decisions\n- used zod" in pr.bodies[0]
 
 
 def test_babysit_blocks_when_pr_cannot_open(repo, tmp_path) -> None:

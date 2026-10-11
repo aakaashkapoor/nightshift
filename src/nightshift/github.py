@@ -123,6 +123,7 @@ class GitHubIssuesSource:
             status=status,
             depends_on=_parse_depends(body),
             body=body,
+            labels=labels,
         )
 
     @staticmethod

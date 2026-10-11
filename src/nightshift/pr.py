@@ -10,11 +10,14 @@ from __future__ import annotations
 
 import json
 import subprocess
+import time
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from ._exe import GH_DIRS, which
 
 BABYSIT_LABEL = "nightshift:babysit"
+REVIEW_LABEL = "review"  # on the issue: wait for a human instead of auto-merging
 
 
 def issue_number_for(slice_id: str) -> str | None:
@@ -24,8 +27,10 @@ def issue_number_for(slice_id: str) -> str | None:
     return None
 
 
-def build_pr_body(sl, *, closes_issue: str | None = None) -> str:
+def build_pr_body(sl, *, closes_issue: str | None = None, decisions: Sequence[str] = ()) -> str:
     parts = [sl.body.strip(), ""]
+    if decisions:
+        parts += ["## Decisions", *(f"- {d}" for d in decisions), ""]
     if closes_issue:
         parts.append(f"Closes #{closes_issue}")
     parts.append("🌙 Shipped autonomously by Nightshift.")
@@ -75,11 +80,43 @@ class GitHubPR:
     def automerge(self, branch: str) -> None:
         self.gh("pr", "merge", branch, "--squash", "--auto")
 
+    def merge(
+        self,
+        branch: str,
+        *,
+        wait: float = 60.0,
+        poll: float = 3.0,
+        sleep: Callable[[float], None] = time.sleep,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
+        """Squash-merge once GitHub has worked out mergeability; raise if it isn't mergeable.
+
+        GitHub reports UNKNOWN for a few seconds after a push, so wait it out (field note #8).
+        """
+        deadline = clock() + wait
+        while True:
+            mergeable = json.loads(self.gh("pr", "view", branch, "--json", "mergeable"))[
+                "mergeable"
+            ]
+            if mergeable != "UNKNOWN" or clock() >= deadline:
+                break
+            sleep(poll)
+        if mergeable != "MERGEABLE":
+            raise RuntimeError(f"not mergeable: {mergeable}")
+        self.gh("pr", "merge", branch, "--squash", "--delete-branch")
+
 
 def open_pr_for_slice(
-    pr: GitHubPR, sl, *, branch: str, base: str, automerge: bool, labels: tuple[str, ...] = ()
+    pr: GitHubPR,
+    sl,
+    *,
+    branch: str,
+    base: str,
+    automerge: bool,
+    labels: tuple[str, ...] = (),
+    decisions: Sequence[str] = (),
 ) -> str:
-    body = build_pr_body(sl, closes_issue=issue_number_for(sl.id))
+    body = build_pr_body(sl, closes_issue=issue_number_for(sl.id), decisions=decisions)
     url = pr.open(branch=branch, base=base, title=sl.title, body=body, labels=labels)
     if automerge:
         pr.automerge(branch)

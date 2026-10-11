@@ -35,7 +35,7 @@ from .pipeline import (
     run_slice,
     sync_base,
 )
-from .pr import BABYSIT_LABEL, GitHubPR, open_pr_for_slice
+from .pr import BABYSIT_LABEL, REVIEW_LABEL, GitHubPR, open_pr_for_slice
 from .prompts import FILES_PROMPT, REQUEUE_PROMPT
 from .resolver import Resolver
 from .review import AgentReviewer
@@ -363,7 +363,7 @@ class Daemon:
         if work.status != DONE:  # Work itself failed -> nothing to integrate
             return self._block(work, work.detail)
         if self.repo_cfg.babysit:
-            return self._open_for_babysit(work)
+            return self._ship_pr(work)
         result = integrate_branch(
             repo_path=self.repo_cfg.path,
             worktree_path=self.worktrees.path_for(work.slice_id),
@@ -393,8 +393,8 @@ class Daemon:
             )
         return self._block(work, result.detail)
 
-    def _open_for_babysit(self, work: SliceResult) -> SliceResult:
-        """Babysit Ship (SPEC §9): rebase + re-check, open a labelled PR, stop."""
+    def _ship_pr(self, work: SliceResult) -> SliceResult:
+        """PR Ship (SPEC §9): rebase + re-check, open a PR, merge it unless the issue wants review."""
         prep = prepare_branch(
             worktree_path=self.worktrees.path_for(work.slice_id),
             base_branch=self.repo_cfg.base_branch,
@@ -414,13 +414,33 @@ class Daemon:
                 base=self.repo_cfg.base_branch,
                 automerge=False,
                 labels=(BABYSIT_LABEL,),
+                decisions=work.decisions,
             )
         except Exception as exc:  # gh/network failure must not kill the tick
             return self._block(work, f"PR failed: {exc}")
-        self.worktrees.teardown(work.slice_id)  # the branch lives on origin now
+        # The branch lives on origin now. Tear down before merging so `gh pr merge
+        # --delete-branch` can delete the local branch too.
+        assert sl is not None  # open_pr_for_slice read it above
+        self.worktrees.teardown(work.slice_id)
+        if REVIEW_LABEL in sl.labels:
+            return self._await_review(work, url)
+        try:
+            self.pr.merge(work.branch)
+        except Exception as exc:  # not mergeable, or gh failed: a human decides
+            return self._await_review(work, url, reason=f"auto-merge failed: {exc}")
+        self.source.set_status(work.slice_id, DONE)
+        self._emit("merged", work.slice_id, pr=url)
+        self._drop(work.slice_id)
+        return SliceResult(
+            work.slice_id, DONE, work.attempts, work.commit, work.branch, "merged", work.session_id
+        )
+
+    def _await_review(self, work: SliceResult, url: str, reason: str = "") -> SliceResult:
+        """Leave the PR open for babysit; ``_watch_reviews`` settles it once it merges."""
         self.source.set_status(work.slice_id, IN_REVIEW)
         self.notifier.notify("in-review", f"{work.slice_id}: {url}")
-        self._emit("review_ready", work.slice_id, pr=url)
+        extra = {"reason": reason} if reason else {}
+        self._emit("review_ready", work.slice_id, pr=url, **extra)
         self._phase(work.slice_id, IN_REVIEW, pr=url)
         return SliceResult(
             work.slice_id, IN_REVIEW, work.attempts, work.commit, work.branch, url, work.session_id

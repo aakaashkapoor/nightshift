@@ -1,7 +1,12 @@
 """Tests for the PR flow (injected git + gh runners)."""
 
+import json
+
+import pytest
+
 from nightshift.pr import (
     BABYSIT_LABEL,
+    REVIEW_LABEL,
     GitHubPR,
     build_pr_body,
     issue_number_for,
@@ -106,3 +111,79 @@ def test_state_reads_pr_state() -> None:
     gh = FakeRunner(ret='{"state": "MERGED"}')
     assert GitHubPR(git=FakeRunner(), gh=gh).state("nightshift/issue-42") == "MERGED"
     assert gh.calls[0] == ("pr", "view", "nightshift/issue-42", "--json", "state")
+
+
+def test_review_label_name() -> None:
+    assert REVIEW_LABEL == "review"
+
+
+def test_build_pr_body_lists_decisions() -> None:
+    body = build_pr_body(_slice("issue-42"), closes_issue="42", decisions=["used zod", "no retry"])
+    assert "## Decisions\n- used zod\n- no retry\n" in body
+    assert body.index("## Decisions") < body.index("Closes #42")
+    assert "## Decisions" not in build_pr_body(_slice("issue-42"), closes_issue="42")
+
+
+def test_open_pr_for_slice_puts_decisions_in_the_body() -> None:
+    gh = FakeRunner(ret="url")
+    open_pr_for_slice(
+        GitHubPR(git=FakeRunner(), gh=gh),
+        _slice("issue-42"),
+        branch="b",
+        base="main",
+        automerge=False,
+        decisions=["used zod"],
+    )
+    create = next(c for c in gh.calls if c[0:2] == ("pr", "create"))
+    assert "- used zod" in create[create.index("--body") + 1]
+
+
+class MergeGh:
+    """Answers `pr view --json mergeable` from a list of states; records the rest."""
+
+    def __init__(self, states):
+        self.states = list(states)
+        self.calls = []
+
+    def __call__(self, *args):
+        self.calls.append(args)
+        if args[:2] == ("pr", "view"):
+            state = self.states.pop(0) if len(self.states) > 1 else self.states[0]
+            return json.dumps({"mergeable": state})
+        return ""
+
+
+class Clock:
+    def __init__(self):
+        self.t = 0.0
+        self.slept = []
+
+    def sleep(self, seconds):
+        self.slept.append(seconds)
+        self.t += seconds
+
+    def __call__(self):
+        return self.t
+
+
+def test_merge_waits_through_unknown_then_squash_merges() -> None:
+    gh, clock = MergeGh(["UNKNOWN", "UNKNOWN", "MERGEABLE"]), Clock()
+    GitHubPR(git=FakeRunner(), gh=gh).merge("b", sleep=clock.sleep, clock=clock)
+    assert clock.slept == [3.0, 3.0]
+    assert gh.calls[-1] == ("pr", "merge", "b", "--squash", "--delete-branch")
+
+
+def test_merge_raises_on_conflicting_without_merging() -> None:
+    gh, clock = MergeGh(["CONFLICTING"]), Clock()
+    with pytest.raises(RuntimeError, match="not mergeable: CONFLICTING"):
+        GitHubPR(git=FakeRunner(), gh=gh).merge("b", sleep=clock.sleep, clock=clock)
+    assert not any(c[:2] == ("pr", "merge") for c in gh.calls)
+
+
+def test_merge_times_out_while_unknown() -> None:
+    gh, clock = MergeGh(["UNKNOWN"]), Clock()
+    with pytest.raises(RuntimeError, match="not mergeable: UNKNOWN"):
+        GitHubPR(git=FakeRunner(), gh=gh).merge(
+            "b", wait=10.0, poll=4.0, sleep=clock.sleep, clock=clock
+        )
+    assert clock.slept == [4.0, 4.0, 4.0]  # polled until the 10s wait ran out

@@ -1,0 +1,223 @@
+{
+  "title": "Nightshift",
+  "aspect": "16:9",
+  "theme": "dark",
+  "opening": "settled",
+  "scenes": [
+    {
+      "id": "hook",
+      "component": "Headline",
+      "props": {
+        "text": "Ship code while you sleep",
+        "motion": "words",
+        "emphasis": "sleep"
+      },
+      "narration": "Nightshift ships your code while you sleep.",
+      "transition": {
+        "type": "slide"
+      }
+    },
+    {
+      "id": "issue",
+      "component": "SceneFrame",
+      "props": {
+        "eyebrow": "Step 1",
+        "headline": "You write the issue",
+        "content": {
+          "component": "CodeWindow",
+          "props": {
+            "title": "issue #41",
+            "language": "markdown",
+            "code": "## Size\nM\n\n## Goal\nRetry failed uploads\n\n## Touches\n- src/upload.ts",
+            "lineNumbers": false,
+            "highlightLines": [
+              2
+            ]
+          }
+        },
+        "footer": "Sized small, medium or large"
+      },
+      "narration": "You slice the work into GitHub issues, each one sized small, medium or large.",
+      "transition": {
+        "type": "slide"
+      },
+      "durationMs": 8100
+    },
+    {
+      "id": "loop",
+      "component": "SceneFrame",
+      "props": {
+        "eyebrow": "Step 2",
+        "headline": "One issue, one worktree",
+        "content": {
+          "component": "FlowDiagram",
+          "props": {
+            "nodes": [
+              "Build",
+              "Check",
+              "Review",
+              "Merge"
+            ]
+          }
+        },
+        "footer": "A local Claude does the work",
+        "mark": "worktree"
+      },
+      "narration": "Each issue gets its own worktree and a local Claude. It builds, runs your checks, reviews the diff, and merges.",
+      "transition": {
+        "type": "slide"
+      }
+    },
+    {
+      "id": "daemon",
+      "component": "SceneFrame",
+      "props": {
+        "eyebrow": "Step 3",
+        "headline": "Many at once",
+        "content": {
+          "component": "TerminalWindow",
+          "props": {
+            "title": "nightshift",
+            "lines": [
+              {
+                "prompt": true,
+                "text": "nsh daemon"
+              },
+              {
+                "text": "starting issue-41 (blocks 3)"
+              },
+              {
+                "text": "starting issue-44 (blocks 0)"
+              }
+            ]
+          }
+        },
+        "footer": "Most important first"
+      },
+      "narration": "The daemon runs several issues in parallel, starting with the ones that unblock the most work.",
+      "transition": {
+        "type": "fade",
+        "durationMs": 700
+      },
+      "durationMs": 6900
+    },
+    {
+      "id": "limit",
+      "component": "SceneFrame",
+      "props": {
+        "eyebrow": "Usage limit",
+        "headline": "It waits, then resumes",
+        "content": {
+          "component": "TerminalWindow",
+          "props": {
+            "title": "nightshift",
+            "lines": [
+              {
+                "text": "usage limit reached; pausing until 14:31"
+              },
+              {
+                "text": "usage limit reset; resuming"
+              },
+              {
+                "text": "issue-44 merged"
+              }
+            ]
+          }
+        },
+        "footer": "Same session, no lost work"
+      },
+      "narration": "Hit your usage limit overnight? It pauses until the limit resets, then picks up the same session.",
+      "transition": {
+        "type": "slide"
+      },
+      "durationMs": 8100
+    },
+    {
+      "id": "conflicts",
+      "component": "SceneFrame",
+      "props": {
+        "eyebrow": "Conflicts",
+        "headline": "Git first, agents last",
+        "content": {
+          "component": "StepList",
+          "props": {
+            "items": [
+              "Lock the files",
+              "Union merge",
+              "Regenerate lockfiles",
+              "Agent, if needed"
+            ],
+            "highlight": 3
+          }
+        },
+        "footer": "Fewer tokens, fewer surprises"
+      },
+      "narration": "Conflicts are prevented first, fixed with plain git second, and only then handed to an agent.",
+      "transition": {
+        "type": "slide"
+      },
+      "durationMs": 7600
+    },
+    {
+      "id": "you",
+      "component": "SceneFrame",
+      "props": {
+        "eyebrow": "You stay in charge",
+        "headline": "It tells you when it needs you",
+        "content": {
+          "component": "TerminalWindow",
+          "props": {
+            "title": "babysit",
+            "lines": [
+              {
+                "prompt": true,
+                "text": "nsh wait"
+              },
+              {
+                "text": "{\"kind\": \"review_ready\", \"pr\": \"#58\"}"
+              }
+            ]
+          }
+        },
+        "footer": "Only issues marked review wait for you"
+      },
+      "narration": "When something needs you, it says so. Only the issues you marked for review wait for a human.",
+      "transition": {
+        "type": "fade",
+        "durationMs": 700
+      },
+      "durationMs": 8600
+    },
+    {
+      "id": "proof",
+      "component": "BigNumber",
+      "props": {
+        "value": 45,
+        "label": "issues shipped for this video's renderer"
+      },
+      "narration": "The tool that rendered this video was built by Nightshift, about forty-five issues of it.",
+      "transition": {
+        "type": "fade",
+        "durationMs": 700
+      }
+    },
+    {
+      "id": "end",
+      "component": "EndCard",
+      "props": {
+        "icon": "clock",
+        "name": "nightshift",
+        "line": "You slice the work. It ships overnight.",
+        "accent": "Open source, fully local",
+        "card": {
+          "component": "PromptCard",
+          "props": {
+            "text": "nsh daemon"
+          }
+        }
+      },
+      "narration": "Nightshift. Open source, and it runs on your machine.",
+      "durationMs": 5600
+    }
+  ]
+}

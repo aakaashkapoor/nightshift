@@ -21,6 +21,12 @@ conflicts and landing a single clean commit. No hands.
 > plain git before an agent. Design: [the v2 spec](./docs/superpowers/specs/2026-10-11-nightshift-v2-design.md).
 > Not yet published to PyPI.
 
+## See it
+
+A 56-second tour, made with [motioncraft](https://github.com/aakaashkapoor/motioncraft) (which Nightshift built). Source: [`docs/video/storyboard.json`](./docs/video/storyboard.json).
+
+https://github.com/user-attachments/assets/e4ae00bc-8a8a-43a4-ae0b-6ff43ffd7c21
+
 ## Inspiration & credit
 
 Nightshift is **heavily inspired by [Matt Pocock](https://github.com/mattpocock)**

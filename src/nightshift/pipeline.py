@@ -21,6 +21,7 @@ from .check import run_check
 from .config import Config
 from .conflicts import conflicted_files, regenerate_lockfiles
 from .executor import Executor
+from .gates import content_problems
 from .gitutil import LOCK as _GIT_LOCK
 from .limits import UsageLimitReached
 from .prompts import check_failed_prompt, repair_prompt
@@ -377,9 +378,13 @@ def run_slice(
                 )
         check = run_check(check_cmd, wt.path)
         if check.passed:
-            green = True
-            break
-        prompt = check_failed_prompt(check_cmd, check.output)
+            problems = content_problems(wt.path, base_branch)
+            if not problems:
+                green = True
+                break
+            prompt = check_failed_prompt("nightshift content gate", "\n".join(problems))
+        else:
+            prompt = check_failed_prompt(check_cmd, check.output)
 
     if not green:
         return _blocked(f"check failed after {attempts} attempt(s)")

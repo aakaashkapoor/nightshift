@@ -11,7 +11,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Protocol
 
-from .slice import Slice, append_to_section
+from .slice import Slice, append_to_section, replace_section
 
 READY = "ready"
 
@@ -81,8 +81,7 @@ class LocalMdSource:
         if sl is None:
             raise KeyError(f"no slice {slice_id!r} in {self.root}")
         sl.status = "needs-detail"
-        if "## Needs detail" not in sl.body:
-            sl.body = sl.body.rstrip() + f"\n\n## Needs detail\n{message}\n"
+        sl.body = replace_section(sl.body, "Needs detail", message)
         self.save(sl)
 
     def append_to_section(self, slice_id: str, heading: str, line: str) -> None:

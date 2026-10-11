@@ -55,6 +55,20 @@ def append_to_section(body: str, heading: str, line: str) -> str:
     return "\n".join([*lines, "", f"## {heading}", line]) + "\n"
 
 
+def replace_section(body: str, heading: str, text: str) -> str:
+    """Set the content of '## <heading>' to ``text``, appending the section if missing."""
+    lines = body.rstrip("\n").splitlines()
+    target = f"## {heading}".lower()
+    for i, existing in enumerate(lines):
+        if existing.strip().lower() == target:
+            end = i + 1
+            while end < len(lines) and not lines[end].strip().startswith("## "):
+                end += 1
+            tail = ["", *lines[end:]] if end < len(lines) else []
+            return "\n".join([*lines[: i + 1], text, *tail]) + "\n"
+    return "\n".join([*lines, "", f"## {heading}", text]) + "\n"
+
+
 @dataclass
 class Slice:
     """One unit of work. See SPEC §3."""

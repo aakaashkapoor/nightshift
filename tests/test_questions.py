@@ -187,6 +187,19 @@ def test_needs_files_flow_end_to_end(repo, tmp_path) -> None:
     assert _runtime(tmp_path) == {}
 
 
+def test_needs_files_keeps_legacy_scope_hints(repo, tmp_path) -> None:
+    (repo / ".slices" / "slice-001.md").write_text(
+        "---\nid: slice-001\ntitle: t\nstatus: ready\n---\n"
+        "## Goal\ndo it\n\n## Scope hints\n- a.py\n",
+        encoding="utf-8",
+    )
+    d = _daemon(repo, tmp_path, Scripted(_need))
+    d.tick()
+    sl = LocalMdSource(repo).get("slice-001")
+    assert sl is not None
+    assert sl.touches() == {"a.py", "b.py", "c.py"}
+
+
 def test_needs_files_without_runtime(repo, tmp_path) -> None:
     _write_slice(repo)
     d = _daemon(repo, tmp_path, Scripted(_need), runtime=False)

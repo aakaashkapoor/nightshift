@@ -269,10 +269,18 @@ class Daemon:
         self._phase(work.slice_id, QUESTION, detail=work.question)
         return work
 
+    def _add_touches(self, slice_id: str, paths: list[str]) -> None:
+        """Append to '## Touches', first carrying over legacy '## Scope hints' paths."""
+        sl = self.source.get(slice_id)
+        if sl is not None and sl.section("Touches") is None:
+            for path in sorted(sl.touches()):
+                self.source.append_to_section(slice_id, "Touches", f"- {path}")
+        for path in paths:
+            self.source.append_to_section(slice_id, "Touches", f"- {path}")
+
     def _request_files(self, work: SliceResult) -> SliceResult:
         """The agent needs more files: add them to Touches and requeue to resume."""
-        for path in work.needs_files:
-            self.source.append_to_section(work.slice_id, "Touches", f"- {path}")
+        self._add_touches(work.slice_id, work.needs_files)
         self.source.set_status(work.slice_id, "ready")
         if self.runtime is not None:
             self.runtime.record(
@@ -306,8 +314,7 @@ class Daemon:
         outside = self._outside_touches(work, touches)
         if not outside:
             return None
-        for path in outside:
-            self.source.append_to_section(work.slice_id, "Touches", f"- {path}")
+        self._add_touches(work.slice_id, outside)
         holder = next(
             (h for h, held in self._held.items() if any(overlaps({f}, held) for f in outside)),
             None,

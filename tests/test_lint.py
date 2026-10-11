@@ -96,8 +96,28 @@ def test_local_md_set_needs_detail(tmp_path) -> None:
     assert sl is not None
     assert sl.status == "needs-detail"
     assert sl.section("Needs detail") == "- missing '## Acceptance'"
-    src.set_needs_detail("s-1", "again")  # already explained: body unchanged
-    assert src.get("s-1").body.count("## Needs detail") == 1  # type: ignore[union-attr]
+    src.set_needs_detail("s-1", "again")  # a later message replaces the old one
+    sl = src.get("s-1")
+    assert sl is not None
+    assert sl.body.count("## Needs detail") == 1
+    assert sl.section("Needs detail") == "again"
+    assert sl.section("Goal") == "x"
+
+
+def test_local_md_needs_detail_replacement_keeps_later_sections(tmp_path) -> None:
+    d = tmp_path / ".slices"
+    d.mkdir()
+    (d / "s-1.md").write_text(
+        "---\nid: s-1\ntitle: T\nstatus: ready\n---\n"
+        "## Needs detail\nold question\n\n## Notes\nkeep me\n",
+        "utf-8",
+    )
+    src = LocalMdSource(tmp_path)
+    src.set_needs_detail("s-1", "new question")
+    sl = src.get("s-1")
+    assert sl is not None
+    assert sl.section("Needs detail") == "new question"
+    assert sl.section("Notes") == "keep me"
 
 
 def test_local_md_set_needs_detail_unknown_slice(tmp_path) -> None:

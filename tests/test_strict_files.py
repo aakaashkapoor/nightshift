@@ -168,3 +168,17 @@ def test_vanished_issue_ships_unchecked(repo, tmp_path) -> None:
 
     d = _daemon(repo, tmp_path, EditsReadme(vanish), source=src)
     assert [r.status for r in d.tick()] == ["done"]
+
+
+def test_strict_flow_keeps_legacy_scope_hints(repo, tmp_path) -> None:
+    (repo / ".slices" / "slice-001.md").write_text(
+        "---\nid: slice-001\ntitle: t\nstatus: ready\n---\n"
+        "## Goal\ndo it\n\n## Scope hints\n- other.md\n",
+        encoding="utf-8",
+    )
+    d = _daemon(repo, tmp_path, EditsReadme())
+    assert [r.status for r in d.tick()] == ["done"]
+    sl = LocalMdSource(repo).get("slice-001")
+    assert sl is not None
+    assert sl.section("Touches") is not None
+    assert sl.touches() == {"other.md", "README.md"}

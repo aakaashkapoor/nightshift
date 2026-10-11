@@ -52,6 +52,13 @@ ANSWER_PROMPT = (
 )
 
 
+REQUEUE_PROMPT = (
+    "Your change also modifies {files}, which another issue was changing at the same "
+    "time. That issue has landed now. Check that your change still fits, adjust if "
+    "needed, then update .nightshift/result.json."
+)
+
+
 def build_prompt(sl) -> str:
     touches = sorted(sl.touches())
     files = ", ".join(touches) if touches else "any (the issue lists no Touches)"

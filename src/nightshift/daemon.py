@@ -35,7 +35,7 @@ from .pipeline import (
     sync_base,
 )
 from .pr import BABYSIT_LABEL, GitHubPR, open_pr_for_slice
-from .prompts import FILES_PROMPT
+from .prompts import FILES_PROMPT, REQUEUE_PROMPT
 from .resolver import Resolver
 from .review import AgentReviewer
 from .runtime import Runtime
@@ -52,6 +52,7 @@ IN_REVIEW = "in-review"
 LIMITED = "limited"
 QUESTION = "question"
 NEEDS_FILES = "needs_files"
+REQUEUED = "requeued"
 
 log = logging.getLogger("nightshift")
 _LOG_FMT = logging.Formatter("%(asctime)s  nightshift  %(message)s", "%H:%M:%S")
@@ -239,6 +240,10 @@ class Daemon:
             return self._ask(work)
         if work.status == NEEDS_FILES:
             return self._request_files(work)
+        if work.status == DONE:
+            requeued = self._enforce_touches(work)
+            if requeued is not None:
+                return requeued
         try:
             return self._ship(work)
         except UsageLimitReached as exc:
@@ -280,6 +285,58 @@ class Daemon:
         self._emit("needs_files", work.slice_id, files=work.needs_files)
         self._phase(work.slice_id, "queued", detail=work.detail)
         return work
+
+    def _outside_touches(self, work: SliceResult, touches: set[str]) -> list[str]:
+        """Existing files the slice modified that its Touches doesn't cover."""
+        out = _git(
+            self.worktrees.path_for(work.slice_id),
+            "diff",
+            "--name-only",
+            "--diff-filter=MDR",
+            f"{self.repo_cfg.base_branch}...HEAD",
+        )
+        return [f for f in out.splitlines() if f and not overlaps({f}, touches)]
+
+    def _enforce_touches(self, work: SliceResult) -> SliceResult | None:
+        """Strict file list: None to ship; a requeued result when another slice owns a file."""
+        sl = self.source.get(work.slice_id)
+        touches = sl.touches() if sl is not None else set()
+        if not touches:
+            return None
+        outside = self._outside_touches(work, touches)
+        if not outside:
+            return None
+        for path in outside:
+            self.source.append_to_section(work.slice_id, "Touches", f"- {path}")
+        holder = next(
+            (h for h, held in self._held.items() if any(overlaps({f}, held) for f in outside)),
+            None,
+        )
+        files = ", ".join(outside)
+        if holder is None:
+            log.info("%s also modified %s; added to Touches", work.slice_id, files)
+            return None
+        self.worktrees.preserve(work.slice_id)
+        self.source.set_status(work.slice_id, "ready")
+        if self.runtime is not None:
+            self.runtime.record(
+                work.slice_id,
+                session_id=work.session_id,
+                branch=work.branch,
+                interrupted=True,
+                resume_prompt=REQUEUE_PROMPT.format(files=files),
+            )
+        self._emit(REQUEUED, work.slice_id, files=outside, holder=holder)
+        self._phase(work.slice_id, "queued", detail=f"{files} is held by {holder}")
+        return SliceResult(
+            work.slice_id,
+            REQUEUED,
+            work.attempts,
+            work.commit,
+            work.branch,
+            f"{files} is held by {holder}",
+            work.session_id,
+        )
 
     def _ship(self, work: SliceResult) -> SliceResult:
         if work.status != DONE:  # Work itself failed -> nothing to integrate
@@ -528,6 +585,8 @@ class Daemon:
                 log.warning("%s paused on the usage limit", r.slice_id)
             elif r.status == QUESTION:
                 log.warning("%s has a question: %s", r.slice_id, r.detail)
+            elif r.status == REQUEUED:
+                log.info("%s requeued: %s", r.slice_id, r.detail)
             elif r.status == NEEDS_FILES:
                 log.info("%s needs more files; requeued (%s)", r.slice_id, r.detail)
             else:
@@ -537,7 +596,7 @@ class Daemon:
         if self.runtime is None:
             return
         for r in results:
-            if r.status in (QUESTION, NEEDS_FILES):
+            if r.status in (QUESTION, NEEDS_FILES, REQUEUED):
                 continue  # recorded in _integrate, with the prompt to resume with
             if r.status in (DONE, IN_REVIEW):
                 self.runtime.forget(r.slice_id)

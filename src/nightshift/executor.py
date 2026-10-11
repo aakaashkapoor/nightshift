@@ -23,6 +23,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from . import prompts
 from ._exe import which
 from .limits import is_usage_limit
 
@@ -132,16 +133,7 @@ class Executor:
         return argv
 
     def build_prompt(self, sl) -> str:
-        return (
-            "You are Nightshift, implementing ONE self-contained unit of work in "
-            "this repository.\n"
-            "Work only within this working directory. Implement the task fully and "
-            "correctly against the acceptance criteria below.\n"
-            "Do NOT commit, push, or create branches — the Nightshift harness "
-            "handles all git.\n\n"
-            f"# {sl.title}\n\n"
-            f"{sl.body.strip()}\n"
-        )
+        return prompts.build_prompt(sl)
 
     def execute_prompt(
         self, cwd: Path | str, prompt: str, resume_session: str | None = None

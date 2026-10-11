@@ -93,6 +93,7 @@ class Daemon:
         reload: Callable[[], RepoConfig] | None = None,
         exit_event: str = "daemon_exit",
         lint_issues: bool = False,
+        result_contract: bool = False,
     ):
         self.source = source
         self.repo_cfg = repo_cfg
@@ -118,6 +119,7 @@ class Daemon:
         self.reload = reload
         self.exit_event = exit_event
         self.lint_issues = lint_issues
+        self.result_contract = result_contract
         self._idle: str | None = None
         self._pool: ThreadPoolExecutor | None = None
         self._running: dict[str, Future[SliceResult]] = {}  # slice id -> work, in start order
@@ -159,6 +161,7 @@ class Daemon:
                 max_attempts=self.max_attempts,
                 reviewer=self.reviewer,
                 resume_session=resume,
+                result_contract=self.result_contract,
             )
         except UsageLimitReached as exc:
             self._reset_sessions[sl.id] = exc.reset_session
@@ -645,6 +648,7 @@ def run_daemon_cli(
         reload=lambda: Config.load(config_path).repo(str(repo)),
         exit_event="child_exit" if child else "daemon_exit",
         lint_issues=True,
+        result_contract=True,
     )
     if once:
         return daemon.tick()

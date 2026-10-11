@@ -66,10 +66,11 @@ class Agent:
 
 
 def _run(repo, tmp_path, agent, **kw):
+    check_cmd = kw.pop("check_cmd", CHECK)
     return run_slice(
         make_slice(),
         repo_path=repo,
-        check_cmd=CHECK,
+        check_cmd=check_cmd,
         worktrees=WorktreeManager(repo, worktrees_root=tmp_path / "wts"),
         executor=Executor(runner=agent),
         **kw,
@@ -350,3 +351,203 @@ def test_sync_base_pulls_without_sync_cmd(tmp_path) -> None:
 
     assert sync_base(repo, "main") == "pulled"
     assert (repo / "m.txt").exists()
+
+
+# ---- Task 3: result.json contract, check output on retry, no-change detection ----
+
+
+def _result(cwd, **data) -> None:
+    path = Path(cwd, ".nightshift", "result.json")
+    path.parent.mkdir(exist_ok=True)
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+
+class Scripted:
+    """Fake agent: step i runs on call i (the last step repeats)."""
+
+    def __init__(self, *steps):
+        self.steps = steps
+        self.prompts: list[str] = []
+        self.argvs: list[list[str]] = []
+
+    def __call__(self, argv, cwd, stdin) -> RunOutput:
+        n = len(self.prompts)
+        self.prompts.append(stdin)
+        self.argvs.append(argv)
+        self.steps[min(n, len(self.steps) - 1)](cwd, stdin)
+        return RunOutput(0, json.dumps({"result": f"call {n}", "session_id": "sess"}), "")
+
+
+def _done(*, decisions=(), write_file=True):
+    def step(cwd, _stdin) -> None:
+        if write_file:
+            Path(cwd, "impl.txt").write_text("done", encoding="utf-8")
+        _result(cwd, outcome="done", decisions=list(decisions))
+
+    return step
+
+
+def _nothing(_cwd, _stdin) -> None:
+    pass
+
+
+def _contract(repo, tmp_path, agent, **kw):
+    return _run(repo, tmp_path, agent, result_contract=True, **kw)
+
+
+def test_exclude_is_written_once_and_commit_omits_nightshift(repo, tmp_path) -> None:
+    wts = WorktreeManager(repo, worktrees_root=tmp_path / "wts")
+    wts.create("a")
+    wts.create("b")
+    exclude = repo / ".git" / "info" / "exclude"
+    assert exclude.read_text(encoding="utf-8").splitlines().count(".nightshift/") == 1
+
+    result = _contract(repo, tmp_path, Scripted(_done()))
+    assert result.status == "done"
+    files = _git(repo, "show", "--name-only", "--format=", "nightshift/slice-001")
+    assert "impl.txt" in files and ".nightshift" not in files
+
+
+def test_exclude_appends_to_existing_content(repo, tmp_path) -> None:
+    exclude = repo / ".git" / "info" / "exclude"
+    exclude.parent.mkdir(exist_ok=True)
+    exclude.write_text("*.log", encoding="utf-8")  # no trailing newline
+    WorktreeManager(repo, worktrees_root=tmp_path / "wts").create("a")
+    assert exclude.read_text(encoding="utf-8").splitlines() == ["*.log", ".nightshift/"]
+
+
+def test_exclude_works_from_a_linked_worktree(repo, tmp_path) -> None:
+    # From inside a worktree git reports the common dir as an absolute path.
+    first = WorktreeManager(repo, worktrees_root=tmp_path / "wts").create("a")
+    WorktreeManager(first.path, worktrees_root=tmp_path / "wts2").create("b")
+    exclude = repo / ".git" / "info" / "exclude"
+    assert exclude.read_text(encoding="utf-8").splitlines().count(".nightshift/") == 1
+
+
+def test_contract_done_is_green_with_decisions_in_commit(repo, tmp_path) -> None:
+    result = _contract(repo, tmp_path, Scripted(_done(decisions=["used sqlite", "no cache"])))
+    assert result.status == "done"
+    assert result.decisions == ["used sqlite", "no cache"]
+    msg = _git(repo, "log", "-1", "--format=%B", "nightshift/slice-001")
+    assert "Decisions:\n- used sqlite\n- no cache" in msg
+
+
+def test_contract_without_decisions_leaves_message_plain(repo, tmp_path) -> None:
+    _contract(repo, tmp_path, Scripted(_done()))
+    msg = _git(repo, "log", "-1", "--format=%B", "nightshift/slice-001")
+    assert "Decisions" not in msg
+
+
+def test_missing_result_triggers_one_repair_call(repo, tmp_path) -> None:
+    def write_impl(cwd, _stdin) -> None:
+        Path(cwd, "impl.txt").write_text("x", encoding="utf-8")
+
+    agent = Scripted(write_impl, _done())
+    result = _contract(repo, tmp_path, agent)
+    assert result.status == "done"
+    assert len(agent.prompts) == 2
+    assert "missing or invalid: file not found" in agent.prompts[1]
+    assert "--resume" in agent.argvs[1]
+
+
+def test_still_missing_result_is_blocked(repo, tmp_path) -> None:
+    agent = Scripted(_nothing)
+    result = _contract(repo, tmp_path, agent)
+    assert result.status == "blocked"
+    assert "agent wrote no valid result.json: file not found" in result.detail
+    assert len(agent.prompts) == 2
+
+
+def test_usage_limit_during_repair_raises(repo, tmp_path) -> None:
+    from nightshift.limits import UsageLimitReached
+
+    class Limited:
+        def __init__(self) -> None:
+            self.n = 0
+
+        def __call__(self, argv, cwd, stdin) -> RunOutput:
+            self.n += 1
+            if self.n == 1:
+                return RunOutput(0, json.dumps({"result": "ok", "session_id": "s"}), "")
+            msg = "You've hit your session limit · resets 2:30pm"
+            return RunOutput(1, json.dumps({"result": msg, "is_error": True}), "")
+
+    with pytest.raises(UsageLimitReached):
+        _contract(repo, tmp_path, Limited())
+
+
+def test_question_outcome_keeps_worktree(repo, tmp_path) -> None:
+    wts = WorktreeManager(repo, worktrees_root=tmp_path / "wts")
+
+    def ask(cwd, _stdin) -> None:
+        _result(cwd, outcome="question", question="Which db?", decisions=["d"])
+
+    result = run_slice(
+        make_slice(),
+        repo_path=repo,
+        check_cmd=CHECK,
+        worktrees=wts,
+        executor=Executor(runner=Scripted(ask)),
+        result_contract=True,
+    )
+    assert result.status == "question"
+    assert result.question == "Which db?" and result.detail == "Which db?"
+    assert result.decisions == ["d"] and result.commit is None
+    assert wts.exists("slice-001")
+
+
+def test_needs_files_outcome(repo, tmp_path) -> None:
+    def need(cwd, _stdin) -> None:
+        _result(cwd, outcome="needs_files", needs_files=["a.py", "b.py"])
+
+    result = _contract(repo, tmp_path, Scripted(need))
+    assert result.status == "needs_files"
+    assert result.needs_files == ["a.py", "b.py"]
+    assert result.detail == "needs a.py, b.py"
+
+
+def test_red_check_retry_sends_check_output_on_same_session(repo, tmp_path) -> None:
+    script = tmp_path / "flaky_check.py"
+    marker = tmp_path / "seen"
+    script.write_text(
+        "import os, sys\n"
+        f"m = r'{marker}'\n"
+        "seen = os.path.exists(m)\n"
+        "open(m, 'w').close()\n"
+        "if not seen:\n"
+        "    print('BOOM-FROM-CHECK')\n"
+        "sys.exit(0 if seen else 1)\n",
+        encoding="utf-8",
+    )
+    agent = Scripted(_done())
+    result = _contract(repo, tmp_path, agent, check_cmd=f'"{sys.executable}" "{script}"')
+    assert result.status == "done" and result.attempts == 2
+    assert "BOOM-FROM-CHECK" in agent.prompts[1]
+    assert "check failed" in agent.prompts[1]
+    assert "--resume" in agent.argvs[1]
+
+
+def test_red_check_retry_without_contract_sends_check_output(repo, tmp_path) -> None:
+    agent = Agent(succeed_on=2)
+    prompts: list[str] = []
+
+    def spy(argv, cwd, stdin):
+        prompts.append(stdin)
+        return agent(argv, cwd, stdin)
+
+    result = _run(repo, tmp_path, spy)
+    assert result.status == "done" and result.attempts == 2
+    assert "check failed" in prompts[1] and "Do the thing." not in prompts[1]
+
+
+def test_no_changes_is_blocked_with_agent_note(repo, tmp_path) -> None:
+    agent = Scripted(_done(write_file=False))
+    result = _contract(repo, tmp_path, agent, check_cmd="echo ok")
+    assert result.status == "blocked"
+    assert result.detail.startswith("agent made no changes: call 0")
+
+
+def test_no_changes_is_blocked_without_contract(repo, tmp_path) -> None:
+    result = _run(repo, tmp_path, Scripted(_nothing), check_cmd="echo ok")
+    assert result.status == "blocked"
+    assert "agent made no changes" in result.detail

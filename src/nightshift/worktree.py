@@ -109,6 +109,18 @@ class WorktreeManager:
     def exists(self, slice_id: str) -> bool:
         return self.path_for(slice_id).exists()
 
+    def _exclude_nightshift_dir(self) -> None:
+        """Keep the agent's .nightshift/ (plan, result) out of every commit."""
+        common = Path(self._git("rev-parse", "--git-common-dir").strip())
+        if not common.is_absolute():
+            common = self.repo / common
+        exclude = common / "info" / "exclude"
+        exclude.parent.mkdir(parents=True, exist_ok=True)
+        current = exclude.read_text(encoding="utf-8") if exclude.exists() else ""
+        if ".nightshift/" not in current.splitlines():
+            prefix = current.rstrip("\n") + "\n" if current.strip() else ""
+            exclude.write_text(prefix + ".nightshift/\n", encoding="utf-8")
+
     def create(self, slice_id: str, base_branch: str = "main") -> Worktree:
         self.root.mkdir(parents=True, exist_ok=True)
         # Deep dependency dirs (node_modules) blow past Windows' 260-char limit;
@@ -117,6 +129,7 @@ class WorktreeManager:
         path = self.path_for(slice_id)
         branch = self.branch_for(slice_id)
         self._git("worktree", "add", "-b", branch, str(path), base_branch)
+        self._exclude_nightshift_dir()
         for name in self.symlink_dirs:
             src, dst = self.repo / name, path / name
             if src.exists() and not dst.exists():

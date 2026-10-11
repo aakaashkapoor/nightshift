@@ -63,6 +63,17 @@ class Agent:
         return _ok()
 
 
+class ContractAgent(Agent):
+    """Agent that also reports through .nightshift/result.json (run_daemon_cli needs it)."""
+
+    def __call__(self, argv, cwd, stdin) -> RunOutput:
+        out = super().__call__(argv, cwd, stdin)
+        result = Path(cwd, ".nightshift", "result.json")
+        result.parent.mkdir(exist_ok=True)
+        result.write_text(json.dumps({"outcome": "done"}), encoding="utf-8")
+        return out
+
+
 class DepAgent:
     """slice-001 creates parent.txt; everyone else creates their own file."""
 
@@ -345,7 +356,9 @@ def test_run_daemon_cli_once(repo, tmp_path) -> None:
         f'repos:\n  demo:\n    path: "{repo.as_posix()}"\n    check: "echo ok"\n',
         encoding="utf-8",
     )
-    results = run_daemon_cli(repo, config_path=cfg, once=True, executor=Executor(runner=Agent()))
+    results = run_daemon_cli(
+        repo, config_path=cfg, once=True, executor=Executor(runner=ContractAgent())
+    )
     assert results[0].status == "done"
 
 

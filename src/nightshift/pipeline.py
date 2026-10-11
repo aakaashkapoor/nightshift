@@ -13,7 +13,7 @@ worktree and a single ``git commit`` produces exactly one clean commit (SPEC §0
 from __future__ import annotations
 
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from .check import run_check
@@ -21,6 +21,8 @@ from .config import Config
 from .executor import Executor
 from .gitutil import LOCK as _GIT_LOCK
 from .limits import UsageLimitReached
+from .prompts import check_failed_prompt, repair_prompt
+from .result import AgentResult, clear_result, read_result
 from .runtime import Runtime
 from .slice import Slice
 from .source import build_source
@@ -43,6 +45,9 @@ class SliceResult:
     branch: str
     detail: str
     session_id: str | None = None  # last agent session (for resume, SPEC §7)
+    decisions: list[str] = field(default_factory=list)
+    question: str = ""
+    needs_files: list[str] = field(default_factory=list)
 
 
 def _git(cwd: Path | str, *args: str) -> str:
@@ -73,9 +78,16 @@ def _git_ok(cwd: Path | str, *args: str) -> bool:
         )
 
 
-def _commit_message(sl: Slice) -> str:
+def _commit_message(sl: Slice, decisions: list[str] | None = None) -> str:
     # Informative, outcome-focused subject; body ties it to the slice.
-    return f"{sl.title}\n\nImplements slice {sl.id}."
+    message = f"{sl.title}\n\nImplements slice {sl.id}."
+    if decisions:
+        message += "\n\nDecisions:\n" + "\n".join(f"- {d}" for d in decisions)
+    return message
+
+
+def _has_changes(path: Path | str) -> bool:
+    return bool(_git(path, "status", "--porcelain"))
 
 
 def _commit_all(worktree_path: Path, message: str) -> str:
@@ -261,6 +273,8 @@ def run_slice(
     reviewer=None,
     review_rounds: int = 2,
     resume_session: str | None = None,
+    result_contract: bool = False,
+    resume_prompt: str | None = None,
 ) -> SliceResult:
     """Work -> check -> review -> one commit.
 
@@ -271,28 +285,70 @@ def run_slice(
     resuming = resume_session is not None and worktrees.exists(sl.id)
     wt = worktrees.attach(sl.id) if resuming else worktrees.create(sl.id, base_branch)
 
-    # Work: iterate until the check is green (or the cap trips).
-    green = False
     attempts = 0
     last_session: str | None = resume_session if resuming else None
-    while attempts < max_attempts:
-        attempts += 1
-        if resuming and attempts == 1:
-            exec_result = executor.execute_prompt(wt.path, CONTINUE_PROMPT, last_session)
-        else:
-            exec_result = executor.execute(wt.path, sl, resume_session=last_session)
-        last_session = exec_result.session_id or last_session
-        if exec_result.usage_limited:
-            raise UsageLimitReached(last_session)
-        if run_check(check_cmd, wt.path).passed:
-            green = True
-            break
 
     def _blocked(reason: str) -> SliceResult:
         sl.status = "blocked"
         sl.attempts = attempts
         worktrees.preserve(sl.id)
         return SliceResult(sl.id, "blocked", attempts, None, wt.branch, reason, last_session)
+
+    # Work: iterate until the check is green (or the cap trips).
+    green = False
+    prompt: str | None = (resume_prompt or CONTINUE_PROMPT) if resuming else None
+    agent: AgentResult | None = None
+    while attempts < max_attempts:
+        attempts += 1
+        clear_result(wt.path)
+        if prompt is None:
+            exec_result = executor.execute(wt.path, sl, resume_session=last_session)
+        else:
+            exec_result = executor.execute_prompt(wt.path, prompt, last_session)
+        last_session = exec_result.session_id or last_session
+        if exec_result.usage_limited:
+            raise UsageLimitReached(last_session)
+        if result_contract:
+            agent, error = read_result(wt.path)
+            if agent is None:
+                fix = executor.execute_prompt(wt.path, repair_prompt(error), last_session)
+                last_session = fix.session_id or last_session
+                if fix.usage_limited:
+                    raise UsageLimitReached(last_session)
+                agent, error = read_result(wt.path)
+            if agent is None:
+                return _blocked(f"agent wrote no valid result.json: {error}")
+            if agent.outcome == "question":
+                worktrees.preserve(sl.id)
+                return SliceResult(
+                    sl.id,
+                    "question",
+                    attempts,
+                    None,
+                    wt.branch,
+                    agent.question,
+                    last_session,
+                    question=agent.question,
+                    decisions=agent.decisions,
+                )
+            if agent.outcome == "needs_files":
+                worktrees.preserve(sl.id)
+                return SliceResult(
+                    sl.id,
+                    "needs_files",
+                    attempts,
+                    None,
+                    wt.branch,
+                    "needs " + ", ".join(agent.needs_files),
+                    last_session,
+                    needs_files=agent.needs_files,
+                    decisions=agent.decisions,
+                )
+        check = run_check(check_cmd, wt.path)
+        if check.passed:
+            green = True
+            break
+        prompt = check_failed_prompt(check_cmd, check.output)
 
     if not green:
         return _blocked(f"check failed after {attempts} attempt(s)")
@@ -317,11 +373,25 @@ def run_slice(
         else:
             return _blocked("blocking review findings unresolved")
 
+    if not resuming and not _has_changes(wt.path):
+        note = (exec_result.result_text or "").strip()[:300]
+        return _blocked(f"agent made no changes: {note}")
+
+    decisions = agent.decisions if agent is not None else []
     commit_fn = _commit_if_changes if resuming else _commit_all
-    commit = commit_fn(wt.path, _commit_message(sl))
+    commit = commit_fn(wt.path, _commit_message(sl, decisions))
     sl.status = "done"
     sl.attempts = attempts
-    return SliceResult(sl.id, "done", attempts, commit, wt.branch, "check passed", last_session)
+    return SliceResult(
+        sl.id,
+        "done",
+        attempts,
+        commit,
+        wt.branch,
+        "check passed",
+        last_session,
+        decisions=decisions,
+    )
 
 
 def resume_slice(

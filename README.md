@@ -25,7 +25,7 @@ conflicts and landing a single clean commit. No hands.
 
 A two-minute technical walkthrough, made with [motioncraft](https://github.com/aakaashkapoor/motioncraft) (which Nightshift built). Source: [`docs/video/storyboard.json`](./docs/video/storyboard.json).
 
-https://github.com/user-attachments/assets/e4ae00bc-8a8a-43a4-ae0b-6ff43ffd7c21
+https://github.com/user-attachments/assets/df0c9d40-6091-4d91-b548-dbd9a2aabb2b
 
 ## Inspiration & credit
 

@@ -69,6 +69,27 @@ class Dag:
                 out.append(s)
         return out
 
+    def dependant_counts(self) -> dict[str, int]:
+        """How many slices (transitively) wait on each slice: the critical-path weight."""
+        counts: dict[str, int] = {}
+        for sid in self.slices:
+            seen: set[str] = set()
+            stack = self.children(sid)
+            while stack:
+                child = stack.pop()
+                if child not in seen:
+                    seen.add(child)
+                    stack.extend(self.children(child))
+            counts[sid] = len(seen)
+        return counts
+
+    def waiting_reason(self, sid: str) -> str | None:
+        """Why a ready slice can't run yet (unfinished dependencies), or None."""
+        pending = [d for d in self.slices[sid].depends_on if self.slices[d].status != DONE]
+        if not pending:
+            return None
+        return "waiting on " + ", ".join(f"{d} ({self.slices[d].status})" for d in pending)
+
     def topo_order(self) -> list[str]:
         return self._topo()
 

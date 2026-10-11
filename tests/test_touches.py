@@ -1,6 +1,6 @@
 """Touches parsing and path-prefix overlap (field notes #4, #21, #28)."""
 
-from nightshift.scheduler import overlaps
+from nightshift.scheduler import Dag, overlaps
 from nightshift.slice import Slice
 
 
@@ -57,3 +57,48 @@ def test_overlaps_exact_prefix_and_separators() -> None:
     assert not overlaps({"src/kit"}, {"src/kitchen.ts"})
     assert not overlaps({"src/a.ts"}, {"src/b.ts"})
     assert not overlaps(set(), {"src/a.ts"})
+
+
+def _dag_slice(sid, status="ready", deps=None) -> Slice:
+    s = Slice.parse(f"---\nid: {sid}\ntitle: {sid}\nstatus: {status}\n---\n")
+    s.depends_on = deps or []
+    return s
+
+
+def test_dependant_counts_are_transitive() -> None:
+    # a <- b <- c, a <- d ; e alone
+    dag = Dag.build(
+        [
+            _dag_slice("a"),
+            _dag_slice("b", deps=["a"]),
+            _dag_slice("c", deps=["b"]),
+            _dag_slice("d", deps=["a"]),
+            _dag_slice("e"),
+        ]
+    )
+    assert dag.dependant_counts() == {"a": 3, "b": 1, "c": 0, "d": 0, "e": 0}
+
+
+def test_waiting_reason_names_unfinished_deps() -> None:
+    dag = Dag.build(
+        [
+            _dag_slice("a", status="blocked"),
+            _dag_slice("b", status="done"),
+            _dag_slice("c", deps=["a", "b"]),
+            _dag_slice("d"),
+        ]
+    )
+    assert dag.waiting_reason("c") == "waiting on a (blocked)"
+    assert dag.waiting_reason("d") is None
+
+
+def test_dependant_counts_diamond_counts_each_once() -> None:
+    dag = Dag.build(
+        [
+            _dag_slice("a"),
+            _dag_slice("b", deps=["a"]),
+            _dag_slice("c", deps=["a"]),
+            _dag_slice("d", deps=["b", "c"]),
+        ]
+    )
+    assert dag.dependant_counts() == {"a": 3, "b": 1, "c": 1, "d": 0}

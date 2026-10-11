@@ -13,6 +13,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
 
+from .limits import UsageLimitReached
+
 BLOCKING = "blocking"
 ADVISORY = "advisory"
 
@@ -64,6 +66,8 @@ class AgentReviewer:
 
     def review(self, worktree_path: Path | str, sl) -> ReviewResult:
         result = self.executor.execute_prompt(str(worktree_path), REVIEW_PROMPT)
+        if result.usage_limited:
+            raise UsageLimitReached(result.session_id)
         return parse_findings(result.result_text)
 
 

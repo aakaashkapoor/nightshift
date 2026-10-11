@@ -24,6 +24,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ._exe import which
+from .limits import is_usage_limit
 
 CLAUDE_BIN = "claude"
 
@@ -42,6 +43,8 @@ class ExecResult:
     result_text: str
     output: str
     returncode: int
+    is_error: bool = False
+    usage_limited: bool = False  # the run stopped on the Claude usage limit
 
 
 Runner = Callable[[list[str], str, str], RunOutput]
@@ -143,17 +146,22 @@ class Executor:
     def _parse(self, out: RunOutput) -> ExecResult:
         session_id: str | None = None
         result_text = out.stdout
+        is_error = False
         try:
             data = json.loads(out.stdout)
             if isinstance(data, dict):
                 session_id = data.get("session_id")
                 result_text = data.get("result", out.stdout)
+                is_error = bool(data.get("is_error", False))
         except (json.JSONDecodeError, TypeError):
             pass
+        failed = is_error or out.returncode != 0
         return ExecResult(
             succeeded=out.returncode == 0,
             session_id=session_id,
             result_text=result_text,
             output=out.stdout,
             returncode=out.returncode,
+            is_error=is_error,
+            usage_limited=failed and is_usage_limit(f"{result_text}\n{out.stderr}"),
         )

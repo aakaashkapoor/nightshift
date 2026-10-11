@@ -2,6 +2,9 @@
 
 import json
 
+import pytest
+
+from nightshift.executor import Executor, RunOutput
 from nightshift.limits import (
     FALLBACK_WAIT,
     RESET_GRACE,
@@ -10,6 +13,8 @@ from nightshift.limits import (
     reset_time,
     resume_at,
 )
+from nightshift.resolver import Resolver
+from nightshift.review import AgentReviewer
 
 
 def test_detects_session_limit_text() -> None:
@@ -92,3 +97,50 @@ def test_usage_limit_reached_carries_session() -> None:
     exc = UsageLimitReached("sess-9")
     assert exc.session_id == "sess-9"
     assert "usage limit" in str(exc)
+
+
+LIMIT_JSON = json.dumps(
+    {
+        "is_error": True,
+        "result": "You've hit your session limit · resets 2:30pm (America/Los_Angeles)",
+        "session_id": "lim-1",
+    }
+)
+
+
+def _runner(stdout: str, rc: int = 0):
+    return lambda argv, cwd, stdin: RunOutput(rc, stdout, "")
+
+
+def test_executor_flags_usage_limit() -> None:
+    res = Executor(runner=_runner(LIMIT_JSON)).execute_prompt("/wt", "go")
+    assert res.is_error is True
+    assert res.usage_limited is True
+    assert res.session_id == "lim-1"
+
+
+def test_executor_flags_limit_on_nonzero_exit_without_json() -> None:
+    res = Executor(runner=_runner("Claude AI usage limit reached|1791581400", rc=1)).execute_prompt(
+        "/wt", "go"
+    )
+    assert res.usage_limited is True
+
+
+def test_executor_success_mentioning_limits_is_not_limited() -> None:
+    ok = json.dumps(
+        {"is_error": False, "result": "Handled: usage limit reached text", "session_id": "s"}
+    )
+    res = Executor(runner=_runner(ok)).execute_prompt("/wt", "go")
+    assert res.is_error is False
+    assert res.usage_limited is False
+
+
+def test_reviewer_raises_on_usage_limit() -> None:
+    with pytest.raises(UsageLimitReached) as info:
+        AgentReviewer(Executor(runner=_runner(LIMIT_JSON))).review("/wt", None)
+    assert info.value.session_id == "lim-1"
+
+
+def test_resolver_raises_on_usage_limit() -> None:
+    with pytest.raises(UsageLimitReached):
+        Resolver(Executor(runner=_runner(LIMIT_JSON)))("/wt")

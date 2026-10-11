@@ -48,7 +48,7 @@ class FakeExec:
 
     def execute_prompt(self, cwd, prompt, resume_session=None):
         self.calls.append((cwd, prompt))
-        return SimpleNamespace(session_id="s", result_text=self.result_text)
+        return SimpleNamespace(session_id="s", result_text=self.result_text, usage_limited=False)
 
 
 # --- check --------------------------------------------------------------------

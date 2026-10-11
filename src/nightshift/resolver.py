@@ -12,6 +12,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from .executor import Executor
+from .limits import UsageLimitReached
 
 RESOLVE_PROMPT = (
     "You are Nightshift's conflict resolver. A git rebase of this branch onto the "
@@ -32,4 +33,6 @@ class Resolver:
         self.executor = executor
 
     def __call__(self, worktree_path: Path | str) -> None:
-        self.executor.execute_prompt(str(worktree_path), RESOLVE_PROMPT)
+        result = self.executor.execute_prompt(str(worktree_path), RESOLVE_PROMPT)
+        if result.usage_limited:
+            raise UsageLimitReached(result.session_id)

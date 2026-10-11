@@ -133,3 +133,55 @@ def test_create_from_moved_main_uses_tip(wm, repo) -> None:
     _git(repo, "commit", "-m", "second")
     wt = wm.create("slice-003", base_branch="main")
     assert (wt.path / "second.txt").exists()
+
+
+def _failing_remove(wm, failures):
+    """Make the first `failures` `git worktree remove` calls fail (None: always)."""
+    real = wm._git
+    state = {"removes": 0}
+
+    def fake(*args):
+        if args[:2] == ("worktree", "remove"):
+            state["removes"] += 1
+            if failures is None or state["removes"] <= failures:
+                raise RuntimeError("Permission denied")
+        return real(*args)
+
+    wm._git = fake
+    return state
+
+
+def test_teardown_kills_holders_then_retries(repo, tmp_path) -> None:
+    killed, slept = [], []
+    wm = WorktreeManager(
+        repo, worktrees_root=tmp_path / "wts", killer=killed.append, sleep=slept.append
+    )
+    wm.create("slice-001")
+    state = _failing_remove(wm, 2)
+    wm.teardown("slice-001")
+    assert killed == [wm.path_for("slice-001")] * 2
+    assert slept == [1, 1]
+    assert state["removes"] == 3
+    assert not wm.path_for("slice-001").exists()
+
+
+def test_teardown_no_kill_when_remove_succeeds(repo, tmp_path) -> None:
+    killed = []
+    wm = WorktreeManager(repo, worktrees_root=tmp_path / "wts", killer=killed.append)
+    wm.create("slice-001")
+    wm.teardown("slice-001")
+    assert killed == []
+
+
+def test_teardown_falls_back_to_force_rmtree(repo, tmp_path, monkeypatch) -> None:
+    killed, slept, forced = [], [], []
+    wm = WorktreeManager(
+        repo, worktrees_root=tmp_path / "wts", killer=killed.append, sleep=slept.append
+    )
+    wm.create("slice-001")
+    state = _failing_remove(wm, None)
+    monkeypatch.setattr("nightshift.worktree._force_rmtree", forced.append)
+    wm.teardown("slice-001")
+    assert len(killed) == 3 and slept == [1, 1, 1]
+    assert state["removes"] == 4  # the first try plus three retries
+    assert forced == [wm.path_for("slice-001")]

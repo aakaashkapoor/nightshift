@@ -12,6 +12,8 @@ import contextlib
 import os
 import shutil
 import subprocess
+import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -64,6 +66,28 @@ def _unlink_dir(link: Path) -> None:
         link.unlink()
 
 
+def kill_processes_in(path: Path) -> None:  # pragma: no cover - real process shim
+    """Kill every process whose command line or executable lives under ``path``.
+
+    A leftover dev server or test runner holds files open and makes
+    ``git worktree remove`` fail on Windows. Best effort: never raises.
+    """
+    try:
+        if os.name == "nt":
+            quoted = str(path).replace("'", "''")
+            script = (
+                "Get-CimInstance Win32_Process | Where-Object { $_.ProcessId -ne $PID -and "
+                f"($_.CommandLine -like '*{quoted}*' -or $_.ExecutablePath -like '{quoted}*') }} "
+                "| ForEach-Object { Stop-Process -Id $_.ProcessId -Force }"
+            )
+            argv = ["powershell", "-NoProfile", "-NonInteractive", "-Command", script]
+        else:
+            argv = ["pkill", "-f", str(path)]
+        subprocess.run(argv, capture_output=True, timeout=60)
+    except Exception:
+        return
+
+
 @dataclass
 class Worktree:
     slice_id: str
@@ -77,6 +101,8 @@ class WorktreeManager:
         repo_path: Path | str,
         worktrees_root: Path | str | None = None,
         symlink_dirs: list[str] | None = None,
+        killer: Callable[[Path], None] = kill_processes_in,
+        sleep: Callable[[float], None] = time.sleep,
     ):
         self.repo = Path(repo_path).resolve()
         if worktrees_root is not None:
@@ -86,6 +112,8 @@ class WorktreeManager:
         # Gitignored dirs (e.g. node_modules, .venv) linked into each worktree so
         # the check can run without a per-worktree reinstall (SPEC §6).
         self.symlink_dirs = list(symlink_dirs or [])
+        self.killer = killer
+        self.sleep = sleep
 
     def _git(self, *args: str) -> str:
         with _GIT_LOCK:
@@ -144,15 +172,26 @@ class WorktreeManager:
             link = path / name
             if link.exists():
                 _unlink_dir(link)
-        try:
-            self._git("worktree", "remove", "--force", str(path))
-        except RuntimeError:  # pragma: no cover - Windows long-path fallback
+        if not self._remove(path):
             # Deps materialized into a deep real dir git can't delete — force it.
             _force_rmtree(path)
             with contextlib.suppress(RuntimeError):
                 self._git("worktree", "prune")
         with contextlib.suppress(RuntimeError):
             self._git("branch", "-D", self.branch_for(slice_id))  # may be pruned
+
+    def _remove(self, path: Path) -> bool:
+        """`git worktree remove`; on failure kill what holds the dir and retry (3x)."""
+        for attempt in range(4):
+            if attempt:
+                self.killer(path)
+                self.sleep(1)
+            try:
+                self._git("worktree", "remove", "--force", str(path))
+                return True
+            except RuntimeError:
+                continue
+        return False
 
     def preserve(self, slice_id: str) -> Worktree:
         """Leave the worktree in place (for a blocked slice); return its handle."""

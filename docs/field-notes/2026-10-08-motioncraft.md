@@ -320,3 +320,24 @@ Each note was checked against the code on branch `v2-phase5`.
 ### Open
 
 - **#14** `nsh init` does not generate a worktree-safe check for Python repos (editable installs still test `main`).
+
+## Found after v2 (2026-10-11)
+
+### 🔴 31. A missing GitHub label wedged a new issue (fixed)
+The first issue filed after v2 (motioncraft #96) never started. `set_status`
+removed `nightshift:needs-detail`, a label the repo had never had, so `gh` failed
+after it had already added `in-progress`. The issue kept both labels, and the daemon
+kept a Touches lock for a slice that wasn't running. Only a restart cleared it.
+- **Fixed in 31e625c:** the source creates its labels on first write, label
+  precedence is fixed, and a failed start releases its lock.
+
+### 🟡 32. The main gate dirtied the user's checkout (fixed)
+The real-Claude smoke test found that running the check in the main checkout left
+`__pycache__` files that blocked the next fast-forward merge.
+- **Fixed in d85b6da:** the gate runs in its own `_main-gate` worktree.
+
+### 🟡 33. Subagent edits wrote CRLF files (fixed)
+A Windows subagent's edits converted files to CRLF and swept an untracked cache
+into a commit.
+- **Fixed in 98d6e97:** `.gitattributes` enforces LF. Commits should add named
+  files, never `git add -A`, when other work is in the tree.

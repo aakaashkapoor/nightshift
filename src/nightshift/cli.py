@@ -126,3 +126,39 @@ def daemon(
         typer.echo(f"{r.status.upper()} {r.slice_id} [{r.branch}] — {r.detail}{commit}")
     if not results:
         typer.echo("no runnable slices")
+
+
+@app.command()
+def status(
+    repo: Path = typer.Option(Path("."), "--repo", help="Target repo (default: current dir)"),
+    config: Path | None = typer.Option(
+        None, "--config", help="Config file (default: ~/.nightshift/config.yaml)"
+    ),
+    as_json: bool = typer.Option(False, "--json", help="Print the raw state as JSON"),
+) -> None:
+    """Show what the daemon is doing: phase and age of every slice, pause state."""
+    from nightshift import wait as wait_mod
+
+    typer.echo(wait_mod.run_status_cli(repo, config_path=config, as_json=as_json))
+
+
+@app.command()
+def wait(
+    repo: Path = typer.Option(Path("."), "--repo", help="Target repo (default: current dir)"),
+    config: Path | None = typer.Option(
+        None, "--config", help="Config file (default: ~/.nightshift/config.yaml)"
+    ),
+    timeout: float | None = typer.Option(None, "--timeout", help="Give up after N seconds"),
+    poll: float = typer.Option(2.0, "--poll", help="Seconds between checks"),
+) -> None:
+    """Block until something needs the driving agent; print it as JSON lines."""
+    import json
+
+    from nightshift import wait as wait_mod
+
+    events = wait_mod.run_wait_cli(repo, config_path=config, timeout=timeout, poll=poll)
+    for event in events:
+        typer.echo(json.dumps(event))
+    if not events:
+        typer.echo(json.dumps({"kind": "timeout"}))
+        raise typer.Exit(code=2)

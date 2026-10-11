@@ -1,0 +1,65 @@
+"""`nsh wait` and `nsh status`: how the master agent follows the daemon (v2, Step 6)."""
+
+from __future__ import annotations
+
+import json
+import time
+from collections.abc import Callable
+from pathlib import Path
+
+from .config import Config
+from .events import ATTENTION, EventLog
+from .paths import repo_home
+from .state import StateStore, render_status
+
+
+def _read_cursor(path: Path) -> int | None:
+    try:
+        return int(path.read_text(encoding="utf-8").strip())
+    except (OSError, ValueError):
+        return None
+
+
+def wait_for_attention(
+    log: EventLog,
+    cursor_path: Path,
+    *,
+    timeout: float | None,
+    poll: float = 2.0,
+    sleep: Callable[[float], None] = time.sleep,
+    clock: Callable[[], float] = time.monotonic,
+) -> list[dict]:
+    """Block until an ATTENTION event arrives after the saved cursor; [] on timeout."""
+    offset = _read_cursor(cursor_path)
+    if offset is None:
+        offset = log.end_offset()
+    deadline = None if timeout is None else clock() + timeout
+    while True:
+        events, offset = log.read_from(offset)
+        cursor_path.parent.mkdir(parents=True, exist_ok=True)
+        cursor_path.write_text(str(offset), encoding="utf-8")
+        hits = [e for e in events if e.get("kind") in ATTENTION]
+        if hits:
+            return hits
+        if deadline is not None and clock() >= deadline:
+            return []
+        sleep(poll)
+
+
+def _home(repo, config_path, home_root) -> Path:
+    name = Config.load(config_path).repo(str(repo)).name
+    return repo_home(name, home_root)
+
+
+def run_wait_cli(repo, *, config_path=None, timeout=None, poll=2.0, home_root=None) -> list[dict]:
+    home = _home(repo, config_path, home_root)
+    return wait_for_attention(
+        EventLog(home / "events.jsonl"), home / "wait.cursor", timeout=timeout, poll=poll
+    )
+
+
+def run_status_cli(repo, *, config_path=None, as_json=False, home_root=None, now=None) -> str:
+    snapshot = StateStore(_home(repo, config_path, home_root) / "state.json").snapshot()
+    if as_json:
+        return json.dumps(snapshot, indent=2)
+    return render_status(snapshot, time.time() if now is None else now)

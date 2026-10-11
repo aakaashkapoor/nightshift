@@ -20,6 +20,7 @@ from .events import EventLog
 from .executor import Executor
 from .limits import UsageLimitReached, reset_time, resume_at
 from .notifier import NullNotifier, build_notifier
+from .paths import repo_home
 from .pipeline import (
     SliceResult,
     _git_ok,
@@ -31,6 +32,7 @@ from .pipeline import (
 from .pr import BABYSIT_LABEL, GitHubPR, open_pr_for_slice
 from .resolver import Resolver
 from .review import AgentReviewer
+from .runtime import Runtime
 from .scheduler import Dag
 from .slice import Slice
 from .source import Source, build_source
@@ -427,12 +429,14 @@ def run_daemon_cli(
     once: bool = False,
     interval: float = 30,
     executor: Executor | None = None,
+    home_root: Path | None = None,
 ) -> list[SliceResult]:
     """`nsh daemon` glue: build a Daemon from config and tick once or run forever."""
     cfg = Config.load(config_path)
     repo_cfg = cfg.repo(str(repo))
     ex = executor if executor is not None else Executor.for_repo(repo_cfg)
     log.info("claude: model %s, effort %s", ex.model or "CLI default", ex.effort or "CLI default")
+    home = repo_home(repo_cfg.name, home_root)
     daemon = Daemon(
         source=build_source(repo_cfg),
         repo_cfg=repo_cfg,
@@ -441,6 +445,9 @@ def run_daemon_cli(
         reviewer=AgentReviewer(ex),
         notifier=build_notifier(cfg.defaults.get("notifier")),
         pr=GitHubPR(repo_cfg.path) if repo_cfg.babysit else None,
+        runtime=Runtime(home / "runtime.json"),
+        events=EventLog(home / "events.jsonl"),
+        state=StateStore(home / "state.json"),
     )
     if once:
         return daemon.tick()

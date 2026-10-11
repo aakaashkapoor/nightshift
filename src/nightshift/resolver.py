@@ -29,10 +29,16 @@ RESOLVE_PROMPT = (
 
 
 class Resolver:
-    def __init__(self, executor: Executor):
+    def __init__(self, executor: Executor, escalate: Executor | None = None):
         self.executor = executor
+        self.escalate = escalate
+        self._calls: dict[str, int] = {}  # worktree path -> resolver calls so far
 
     def __call__(self, worktree_path: Path | str) -> None:
-        result = self.executor.execute_prompt(str(worktree_path), RESOLVE_PROMPT)
+        key = str(worktree_path)
+        calls = self._calls.get(key, 0)
+        self._calls[key] = calls + 1
+        executor = self.escalate if calls and self.escalate is not None else self.executor
+        result = executor.execute_prompt(key, RESOLVE_PROMPT)
         if result.usage_limited:
             raise UsageLimitReached(result.session_id)

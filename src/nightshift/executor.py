@@ -104,6 +104,16 @@ class Executor:
         """A real executor with the repo's configured model and effort."""
         return cls(model=repo.model, effort=repo.effort)
 
+    def with_model(self, model: str | None) -> Executor:
+        """A copy that runs a different model (same runner, effort, permissions)."""
+        return Executor(
+            runner=self.runner,
+            permission_mode=self.permission_mode,
+            model=model,
+            claude_bin=self.claude_bin,
+            effort=self.effort,
+        )
+
     def build_argv(self, resume_session: str | None = None) -> list[str]:
         argv = [
             self.claude_bin,

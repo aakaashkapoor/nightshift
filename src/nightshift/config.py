@@ -106,7 +106,16 @@ class RepoConfig:
     effort: str | None = None
     # Run the check on the base branch before starting work (field note #15).
     main_gate: bool = False
+    models: dict = field(default_factory=dict)  # role -> model; roles: S, M, L, review, resolve
 
+    def model_for(self, role: str) -> str | None:
+        """The model for a role: per-repo override, then the default, then `model`."""
+        if role in self.models:
+            return self.models[role]
+        return DEFAULT_ROLE_MODELS.get(role, self.model)
+
+
+DEFAULT_ROLE_MODELS = {"S": "sonnet", "review": "sonnet", "resolve": "sonnet"}
 
 EFFORTS = ("low", "medium", "high", "xhigh", "max")
 
@@ -180,4 +189,5 @@ class Config:
             model=entry.get("model", self.defaults.get("model")),
             effort=effort,
             main_gate=bool(entry.get("main_gate", True)),
+            models=entry.get("models", self.defaults.get("models", {})),
         )

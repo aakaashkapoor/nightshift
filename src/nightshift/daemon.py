@@ -147,13 +147,14 @@ class Daemon:
     def _run_one(self, sl: Slice) -> SliceResult:
         entry = self.runtime.get(sl.id) if self.runtime is not None else {}
         resume = entry.get("session_id") if entry.get("interrupted") else None
+        executor = self.executor.with_model(self.repo_cfg.model_for(sl.size()))
         try:
             return run_slice(
                 sl,
                 repo_path=self.repo_cfg.path,
                 check_cmd=self.repo_cfg.check,
                 worktrees=self.worktrees,
-                executor=self.executor,
+                executor=executor,
                 base_branch=self.repo_cfg.base_branch,
                 max_attempts=self.max_attempts,
                 reviewer=self.reviewer,
@@ -624,13 +625,17 @@ def run_daemon_cli(
     repo_cfg = cfg.repo(str(repo))
     ex = executor if executor is not None else Executor.for_repo(repo_cfg)
     log.info("claude: model %s, effort %s", ex.model or "CLI default", ex.effort or "CLI default")
+    roles = ("S", "M", "L", "review", "resolve")
+    log.info(
+        "models: %s", ", ".join(f"{r}={repo_cfg.model_for(r) or 'CLI default'}" for r in roles)
+    )
     home = repo_home(repo_cfg.name, home_root)
     daemon = Daemon(
         source=build_source(repo_cfg),
         repo_cfg=repo_cfg,
         executor=ex,
-        resolver=Resolver(ex),
-        reviewer=AgentReviewer(ex),
+        resolver=Resolver(ex.with_model(repo_cfg.model_for("resolve")), escalate=ex),
+        reviewer=AgentReviewer(ex.with_model(repo_cfg.model_for("review"))),
         notifier=build_notifier(cfg.defaults.get("notifier")),
         pr=GitHubPR(repo_cfg.path) if repo_cfg.babysit else None,
         runtime=Runtime(home / "runtime.json"),

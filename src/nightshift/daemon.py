@@ -635,11 +635,17 @@ class Daemon:
         self._idle = None
         log.info("running %d slice(s): %s", len(started), ", ".join(s.id for s in started))
         for sl in started:
-            self.source.set_status(sl.id, IN_PROGRESS)
-            self._emit("slice_started", sl.id, weight=weight[sl.id])
-            self._phase(sl.id, "working")
-            log.info("starting %s (blocks %d)", sl.id, weight[sl.id])
-            self._running[sl.id] = self._executor_pool().submit(self._run_one, sl)
+            try:  # all-or-nothing: a failed start must not leave a stale lock
+                self.source.set_status(sl.id, IN_PROGRESS)
+                self._emit("slice_started", sl.id, weight=weight[sl.id])
+                self._phase(sl.id, "working")
+                log.info("starting %s (blocks %d)", sl.id, weight[sl.id])
+                self._running[sl.id] = self._executor_pool().submit(self._run_one, sl)
+            except Exception as e:
+                self._held.pop(sl.id, None)
+                self._drop(sl.id)
+                log.warning("could not start %s (stays ready): %s", sl.id, e)
+                self._emit("start_failed", sl.id, error=str(e))
 
     def _lint_runnable(self, runnable: list[Slice]) -> list[Slice]:
         """Park issues the linter rejects as needs-detail; return the rest."""

@@ -1,0 +1,165 @@
+{
+  "audioMs": 11042,
+  "words": [
+    {
+      "text": "Every",
+      "startMs": 63.625,
+      "endMs": 313.625
+    },
+    {
+      "text": "issue",
+      "startMs": 363.625,
+      "endMs": 663.625
+    },
+    {
+      "text": "has",
+      "startMs": 713.625,
+      "endMs": 838.625
+    },
+    {
+      "text": "a",
+      "startMs": 863.625,
+      "endMs": 913.625
+    },
+    {
+      "text": "size,",
+      "startMs": 988.625,
+      "endMs": 1638.625
+    },
+    {
+      "text": "a",
+      "startMs": 1763.625,
+      "endMs": 1813.625
+    },
+    {
+      "text": "contract",
+      "startMs": 1863.625,
+      "endMs": 2388.625
+    },
+    {
+      "text": "of",
+      "startMs": 2413.625,
+      "endMs": 2463.625
+    },
+    {
+      "text": "what",
+      "startMs": 2488.625,
+      "endMs": 2588.625
+    },
+    {
+      "text": "it",
+      "startMs": 2613.625,
+      "endMs": 2663.625
+    },
+    {
+      "text": "owns",
+      "startMs": 2713.625,
+      "endMs": 3113.625
+    },
+    {
+      "text": "and",
+      "startMs": 3188.625,
+      "endMs": 3263.625
+    },
+    {
+      "text": "what",
+      "startMs": 3313.625,
+      "endMs": 3413.625
+    },
+    {
+      "text": "it",
+      "startMs": 3438.625,
+      "endMs": 3488.625
+    },
+    {
+      "text": "uses,",
+      "startMs": 3538.625,
+      "endMs": 4163.625
+    },
+    {
+      "text": "acceptance",
+      "startMs": 4288.625,
+      "endMs": 4813.625
+    },
+    {
+      "text": "criteria,",
+      "startMs": 4863.625,
+      "endMs": 5563.625
+    },
+    {
+      "text": "and",
+      "startMs": 5663.625,
+      "endMs": 5738.625
+    },
+    {
+      "text": "the",
+      "startMs": 5763.625,
+      "endMs": 5813.625
+    },
+    {
+      "text": "files",
+      "startMs": 5888.625,
+      "endMs": 6188.625
+    },
+    {
+      "text": "it",
+      "startMs": 6213.625,
+      "endMs": 6263.625
+    },
+    {
+      "text": "touches.",
+      "startMs": 6313.625,
+      "endMs": 6832.083333333333
+    },
+    {
+      "text": "A",
+      "startMs": 7151.416666666667,
+      "endMs": 7201.416666666667
+    },
+    {
+      "text": "linter",
+      "startMs": 7276.416666666667,
+      "endMs": 7751.416666666667
+    },
+    {
+      "text": "rejects",
+      "startMs": 7826.416666666667,
+      "endMs": 8276.416666666666
+    },
+    {
+      "text": "incomplete",
+      "startMs": 8351.416666666668,
+      "endMs": 8876.416666666668
+    },
+    {
+      "text": "issues",
+      "startMs": 8926.416666666666,
+      "endMs": 9576.416666666666
+    },
+    {
+      "text": "before",
+      "startMs": 9651.416666666666,
+      "endMs": 9901.416666666666
+    },
+    {
+      "text": "any",
+      "startMs": 9951.416666666666,
+      "endMs": 10101.416666666668
+    },
+    {
+      "text": "tokens",
+      "startMs": 10151.416666666666,
+      "endMs": 10526.416666666666
+    },
+    {
+      "text": "are",
+      "startMs": 10551.416666666666,
+      "endMs": 10601.416666666668
+    },
+    {
+      "text": "spent.",
+      "startMs": 10651.416666666666,
+      "endMs": 11042.083333333334
+    }
+  ]
+}

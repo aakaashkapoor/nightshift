@@ -2,7 +2,7 @@
 
 import json
 
-from nightshift.github import GitHubIssuesSource
+from nightshift.github import LABELS, GitHubIssuesSource
 from nightshift.slice import Slice
 
 
@@ -101,7 +101,7 @@ def test_in_review_label_maps_to_status() -> None:
 def test_set_status_in_review_swaps_labels() -> None:
     gh = FakeGh([])
     GitHubIssuesSource(".", gh=gh).set_status("issue-7", "in-review")
-    edit = gh.calls[0]
+    edit = [c for c in gh.calls if c[0] == "issue"][0]
     assert edit[edit.index("--add-label") + 1] == "nightshift:in-review"
     assert "nightshift:in-progress" in edit[edit.index("--remove-label") + 1]
 
@@ -150,3 +150,59 @@ def test_slices_carry_their_issue_labels() -> None:
     src = GitHubIssuesSource(".", gh=FakeGh(issues))
     assert src.get("issue-7").labels == {"nightshift:ready", "review"}
     assert Slice(id="x", title="t", status="ready").labels == set()
+
+
+def _label_creates(gh):
+    return [c for c in gh.calls if c[:2] == ("label", "create")]
+
+
+def test_labels_are_created_once_before_the_first_edit() -> None:
+    src, gh = _source()
+    assert _label_creates(gh) == []  # lazy: reads create nothing
+    src.list_all()
+    assert _label_creates(gh) == []
+    src.set_status("issue-1", "in-progress")
+    creates = _label_creates(gh)
+    assert {c[2] for c in creates} == set(LABELS.values())
+    assert all("--force" in c and "--description" in c for c in creates)
+    first_edit = next(i for i, c in enumerate(gh.calls) if c[:2] == ("issue", "edit"))
+    assert all(gh.calls.index(c) < first_edit for c in creates)
+    src.set_blocked("issue-1", "why")
+    src.set_needs_detail("issue-1", "more")
+    assert len(_label_creates(gh)) == len(LABELS)  # once per instance
+
+
+def test_each_write_path_ensures_labels() -> None:
+    for write in (
+        lambda s: s.set_blocked("issue-1", ""),
+        lambda s: s.set_needs_detail("issue-1", "m"),
+    ):
+        src, gh = _source()
+        write(src)
+        assert len(_label_creates(gh)) == len(LABELS)
+
+
+def test_label_creation_failure_is_ignored() -> None:
+    class Failing(FakeGh):
+        def __call__(self, *args):
+            if args[:2] == ("label", "create"):
+                self.calls.append(args)
+                raise RuntimeError("no permission")
+            return super().__call__(*args)
+
+    gh = Failing(ISSUES)
+    src = GitHubIssuesSource(".", gh=gh)
+    src.set_status("issue-1", "in-progress")  # must not raise
+    assert gh.calls[-1][:2] == ("issue", "edit")
+    src.set_status("issue-1", "in-review")
+    assert len(_label_creates(gh)) == len(LABELS)  # no retry storm
+
+
+def test_status_precedence_is_deterministic() -> None:
+    order = ["in-progress", "in-review", "blocked", "needs-detail", "ready"]
+    for i, winner in enumerate(order):
+        labels = {LABELS[s] for s in order[i:]}
+        for _ in range(20):
+            assert GitHubIssuesSource._status_of(set(labels), "OPEN") == winner
+    assert GitHubIssuesSource._status_of({LABELS["ready"]}, "CLOSED") == "done"
+    assert GitHubIssuesSource._status_of({"bug"}, "OPEN") is None

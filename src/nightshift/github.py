@@ -9,6 +9,7 @@ repo directory.
 
 from __future__ import annotations
 
+import logging
 import re
 import subprocess
 from pathlib import Path
@@ -24,7 +25,17 @@ LABELS = {
     "blocked": f"{PREFIX}blocked",
     "needs-detail": f"{PREFIX}needs-detail",
 }
+log = logging.getLogger(__name__)
 _LABEL_TO_STATUS = {v: k for k, v in LABELS.items()}
+# When an issue carries several nightshift labels, the first of these wins.
+_PRECEDENCE = ("in-progress", "in-review", "blocked", "needs-detail", "ready")
+_LABEL_DESCRIPTIONS = {
+    "ready": "Nightshift: ready to be picked up",
+    "in-progress": "Nightshift: being worked on",
+    "in-review": "Nightshift: PR awaiting review",
+    "blocked": "Nightshift: blocked, needs a human",
+    "needs-detail": "Nightshift: the issue needs more detail",
+}
 _DEPENDS_RE = re.compile(r"(?im)^depends-on:\s*(.+)$")
 
 
@@ -51,6 +62,20 @@ class GitHubIssuesSource:
     def __init__(self, repo_path: Path | str = ".", gh=None):
         self.repo_path = repo_path
         self.gh = gh or _default_gh(repo_path)
+        self._labels_ensured = False
+
+    def _ensure_labels(self) -> None:
+        """Create every nightshift label (idempotent) before the first label edit."""
+        if self._labels_ensured:
+            return
+        self._labels_ensured = True
+        for key, name in LABELS.items():
+            try:
+                self.gh(
+                    "label", "create", name, "--force", "--description", _LABEL_DESCRIPTIONS[key]
+                )
+            except Exception as e:
+                log.warning("could not ensure label %s: %s", name, e)
 
     # --- reads ---------------------------------------------------------------
 
@@ -83,11 +108,13 @@ class GitHubIssuesSource:
         if status == "done":
             self.gh("issue", "close", num)
             return
+        self._ensure_labels()
         add = LABELS[status]
         remove = ",".join(v for k, v in LABELS.items() if k != status)
         self.gh("issue", "edit", num, "--add-label", add, "--remove-label", remove)
 
     def set_blocked(self, slice_id: str, reason: str) -> None:
+        self._ensure_labels()
         num = _num(slice_id)
         remove = ",".join(v for k, v in LABELS.items() if k != "blocked")
         self.gh("issue", "edit", num, "--add-label", LABELS["blocked"], "--remove-label", remove)
@@ -95,6 +122,7 @@ class GitHubIssuesSource:
             self.gh("issue", "comment", num, "--body", f"⛔ Blocked: {reason}")
 
     def set_needs_detail(self, slice_id: str, message: str) -> None:
+        self._ensure_labels()
         num = _num(slice_id)
         remove = ",".join(v for k, v in LABELS.items() if k != "needs-detail")
         self.gh(
@@ -130,9 +158,9 @@ class GitHubIssuesSource:
     def _status_of(labels: set[str], state: str) -> str | None:
         if state.lower() == "closed":
             return "done"
-        for label in labels:
-            if label in _LABEL_TO_STATUS:
-                return _LABEL_TO_STATUS[label]
+        for status in _PRECEDENCE:
+            if LABELS[status] in labels:
+                return status
         return None
 
 

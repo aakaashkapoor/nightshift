@@ -1,0 +1,105 @@
+{
+  "audioMs": 6568,
+  "words": [
+    {
+      "text": "A",
+      "startMs": 67.875,
+      "endMs": 117.875
+    },
+    {
+      "text": "local",
+      "startMs": 167.875,
+      "endMs": 467.875
+    },
+    {
+      "text": "daemon",
+      "startMs": 517.875,
+      "endMs": 842.875
+    },
+    {
+      "text": "polls",
+      "startMs": 917.875,
+      "endMs": 1167.875
+    },
+    {
+      "text": "your",
+      "startMs": 1192.875,
+      "endMs": 1267.875
+    },
+    {
+      "text": "issues,",
+      "startMs": 1317.875,
+      "endMs": 2067.875
+    },
+    {
+      "text": "builds",
+      "startMs": 2192.875,
+      "endMs": 2442.875
+    },
+    {
+      "text": "a",
+      "startMs": 2467.875,
+      "endMs": 2492.875
+    },
+    {
+      "text": "dependency",
+      "startMs": 2542.875,
+      "endMs": 3117.875
+    },
+    {
+      "text": "graph,",
+      "startMs": 3167.875,
+      "endMs": 3717.875
+    },
+    {
+      "text": "and",
+      "startMs": 3842.875,
+      "endMs": 3917.875
+    },
+    {
+      "text": "runs",
+      "startMs": 3967.875,
+      "endMs": 4317.875
+    },
+    {
+      "text": "each",
+      "startMs": 4392.875,
+      "endMs": 4617.875
+    },
+    {
+      "text": "ready",
+      "startMs": 4692.875,
+      "endMs": 4892.875
+    },
+    {
+      "text": "issue",
+      "startMs": 4942.875,
+      "endMs": 5317.875
+    },
+    {
+      "text": "in",
+      "startMs": 5367.875,
+      "endMs": 5417.875
+    },
+    {
+      "text": "its",
+      "startMs": 5442.875,
+      "endMs": 5567.875
+    },
+    {
+      "text": "own",
+      "startMs": 5642.875,
+      "endMs": 5867.875
+    },
+    {
+      "text": "git",
+      "startMs": 5917.875,
+      "endMs": 6092.875
+    },
+    {
+      "text": "worktree.",
+      "startMs": 6142.875,
+      "endMs": 6567.875
+    }
+  ]
+}

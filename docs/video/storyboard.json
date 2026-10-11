@@ -5,201 +5,221 @@
   "opening": "settled",
   "scenes": [
     {
-      "id": "hook",
-      "component": "Headline",
+      "id": "title",
+      "component": "TitleCard",
       "props": {
-        "text": "Ship code while you sleep",
-        "motion": "words",
-        "emphasis": "sleep"
+        "kicker": "Open source · runs on your machine",
+        "title": "Nightshift",
+        "subtitle": "GitHub issues in, merged pull requests out"
       },
-      "narration": "Nightshift ships your code while you sleep.",
-      "transition": {
-        "type": "slide"
-      }
-    },
-    {
-      "id": "issue",
-      "component": "SceneFrame",
-      "props": {
-        "eyebrow": "Step 1",
-        "headline": "You write the issue",
-        "content": {
-          "component": "CodeWindow",
-          "props": {
-            "title": "issue #41",
-            "language": "markdown",
-            "code": "## Size\nM\n\n## Goal\nRetry failed uploads\n\n## Touches\n- src/upload.ts",
-            "lineNumbers": false,
-            "highlightLines": [
-              2
-            ]
-          }
-        },
-        "footer": "Sized small, medium or large"
-      },
-      "narration": "You slice the work into GitHub issues, each one sized small, medium or large.",
-      "transition": {
-        "type": "slide"
-      },
-      "durationMs": 8100
+      "narration": "Nightshift is an autonomous coding loop. It turns GitHub issues into merged pull requests, on your own machine, with Claude Code.",
+      "transition": { "type": "fade", "durationMs": 700 }
     },
     {
       "id": "loop",
       "component": "SceneFrame",
       "props": {
-        "eyebrow": "Step 2",
-        "headline": "One issue, one worktree",
-        "content": {
-          "component": "FlowDiagram",
-          "props": {
-            "nodes": [
-              "Build",
-              "Check",
-              "Review",
-              "Merge"
-            ]
-          }
-        },
-        "footer": "A local Claude does the work",
-        "mark": "worktree"
+        "eyebrow": "The loop",
+        "headline": "A daemon over your issue queue",
+        "content": { "component": "FlowDiagram", "props": { "nodes": ["Issues", "Daemon", "Worktrees", "Merged PRs"] } },
+        "footer": "One git worktree per issue"
       },
-      "narration": "Each issue gets its own worktree and a local Claude. It builds, runs your checks, reviews the diff, and merges.",
-      "transition": {
-        "type": "slide"
-      }
+      "narration": "A local daemon polls your issues, builds a dependency graph, and runs each ready issue in its own git worktree.",
+      "transition": { "type": "slide" }
     },
     {
-      "id": "daemon",
+      "id": "issue",
       "component": "SceneFrame",
       "props": {
-        "eyebrow": "Step 3",
-        "headline": "Many at once",
+        "eyebrow": "Step 1 · the issue",
+        "headline": "A strict template",
         "content": {
-          "component": "TerminalWindow",
+          "component": "CodeWindow",
           "props": {
-            "title": "nightshift",
-            "lines": [
-              {
-                "prompt": true,
-                "text": "nsh daemon"
-              },
-              {
-                "text": "starting issue-41 (blocks 3)"
-              },
-              {
-                "text": "starting issue-44 (blocks 0)"
-              }
-            ]
+            "title": "issue #41",
+            "language": "markdown",
+            "code": "## Size\nM\n## Contract\nOwns: retryUpload\nUses: UploadError\n## Acceptance\n- 3 retries, then UploadError\n## Touches\n- src/upload.ts\nDepends-on: #40",
+            "lineNumbers": false,
+            "highlightLines": [4, 5]
           }
         },
-        "footer": "Most important first"
+        "footer": "Linted before a single token is spent"
       },
-      "narration": "The daemon runs several issues in parallel, starting with the ones that unblock the most work.",
-      "transition": {
-        "type": "fade",
-        "durationMs": 700
+      "narration": "Every issue has a size, a contract of what it owns and what it uses, acceptance criteria, and the files it touches. A linter rejects incomplete issues before any tokens are spent.",
+      "durationMs": 11500,
+      "transition": { "type": "slide" }
+    },
+    {
+      "id": "schedule",
+      "component": "SceneFrame",
+      "props": {
+        "eyebrow": "Step 2 · scheduling",
+        "headline": "Critical path first",
+        "content": {
+          "component": "CardRow",
+          "props": {
+            "cards": [
+              { "icon": "git-branch", "title": "Dependency graph" },
+              { "icon": "lock", "title": "Touches lock" },
+              { "icon": "zap", "title": "Worker pool" }
+            ],
+            "highlight": 1
+          }
+        },
+        "footer": "Two issues never edit the same files at once"
       },
-      "durationMs": 6900
+      "narration": "Touches work as a lock, so two issues never edit the same files at once. A worker pool fills each free slot with whatever unblocks the most work.",
+      "durationMs": 9000,
+      "transition": { "type": "slide" }
+    },
+    {
+      "id": "sizes",
+      "component": "SceneFrame",
+      "props": {
+        "eyebrow": "Step 3 · build",
+        "headline": "Size picks the workflow",
+        "content": {
+          "component": "CardRow",
+          "props": {
+            "cards": [
+              { "icon": "zap", "title": "S", "subtitle": "Sonnet, direct" },
+              { "icon": "file", "title": "M", "subtitle": "Plan, then build" },
+              { "icon": "users", "title": "L", "subtitle": "Subagents" }
+            ],
+            "highlight": 2
+          }
+        },
+        "footer": "Cheap models where they're enough"
+      },
+      "narration": "Size picks the workflow and the model. Small issues go straight to Sonnet. Medium ones write a plan first. Large ones fan out to one subagent per subtask.",
+      "durationMs": 10000,
+      "transition": { "type": "slide" }
+    },
+    {
+      "id": "contract",
+      "component": "SceneFrame",
+      "props": {
+        "eyebrow": "Step 4 · report",
+        "headline": "The agent reports in JSON",
+        "content": {
+          "component": "CodeWindow",
+          "props": {
+            "title": ".nightshift/result.json",
+            "language": "json",
+            "code": "{\n  \"outcome\": \"question\",\n  \"question\": \"Extend UploadError or add RetryError?\"\n}",
+            "lineNumbers": false,
+            "highlightLines": [3]
+          }
+        },
+        "footer": "No git, no labels: the harness does that"
+      },
+      "narration": "The agent never touches git or labels. It ends by writing a JSON report: done, a question, or a request for more files. A question goes on the issue, and your answer resumes the same session.",
+      "durationMs": 12000,
+      "transition": { "type": "slide" }
+    },
+    {
+      "id": "gates",
+      "component": "SceneFrame",
+      "props": {
+        "eyebrow": "Step 5 · verify",
+        "headline": "Gates before review",
+        "content": {
+          "component": "StepList",
+          "props": { "items": ["Your check command", "UTF-8 and conflict markers", "Sonnet reviews the diff"], "highlight": 2 }
+        },
+        "footer": "Blocking findings must cite file:line"
+      },
+      "narration": "Every change must pass your check command and a content scan. Then a reviewer reads the diff, the issue and the plan. Blocking findings must cite a file and a line.",
+      "durationMs": 10500,
+      "transition": { "type": "slide" }
+    },
+    {
+      "id": "conflicts",
+      "component": "SceneFrame",
+      "props": {
+        "eyebrow": "Step 6 · ship",
+        "headline": "Git first, agents last",
+        "content": {
+          "component": "StepList",
+          "props": { "items": ["Edits outside Touches caught", "Union merge for registries", "Regenerate lockfiles", "Agent for what's left"], "highlight": 3 }
+        },
+        "footer": "Conflicts are counted per file"
+      },
+      "narration": "At ship time, edits outside the declared files are caught. Conflicts go down a ladder: union merge for registry files, regenerated lockfiles, and an agent only for what is left.",
+      "durationMs": 11000,
+      "transition": { "type": "slide" }
+    },
+    {
+      "id": "merge",
+      "component": "SceneFrame",
+      "props": {
+        "eyebrow": "Step 7 · merge",
+        "headline": "Merges itself, unless you say review",
+        "content": {
+          "component": "FlowDiagram",
+          "props": { "nodes": ["Open PR", "review label?", "Auto-merge"] }
+        },
+        "footer": "Its own open PRs are rebased when main moves"
+      },
+      "narration": "The pull request merges itself, unless the issue is labelled review. And when main moves, Nightshift rebases its own open pull requests.",
+      "durationMs": 9000,
+      "transition": { "type": "fade", "durationMs": 700 }
     },
     {
       "id": "limit",
       "component": "SceneFrame",
       "props": {
-        "eyebrow": "Usage limit",
+        "eyebrow": "Usage limits",
         "headline": "It waits, then resumes",
         "content": {
           "component": "TerminalWindow",
           "props": {
             "title": "nightshift",
             "lines": [
-              {
-                "text": "usage limit reached; pausing until 14:31"
-              },
-              {
-                "text": "usage limit reset; resuming"
-              },
-              {
-                "text": "issue-44 merged"
-              }
+              { "text": "usage limit reached; pausing until 14:31" },
+              { "text": "usage limit reset; resuming" },
+              { "text": "issue-44 merged" }
             ]
           }
         },
-        "footer": "Same session, no lost work"
+        "footer": "Reset time read from the session transcript"
       },
-      "narration": "Hit your usage limit overnight? It pauses until the limit resets, then picks up the same session.",
-      "transition": {
-        "type": "slide"
-      },
-      "durationMs": 8100
+      "narration": "Hit your usage limit overnight? It reads the exact reset time from the session transcript, pauses, then resumes the same session. Nothing is marked as failed.",
+      "durationMs": 10500,
+      "transition": { "type": "slide" }
     },
     {
-      "id": "conflicts",
+      "id": "status",
       "component": "SceneFrame",
       "props": {
-        "eyebrow": "Conflicts",
-        "headline": "Git first, agents last",
-        "content": {
-          "component": "StepList",
-          "props": {
-            "items": [
-              "Lock the files",
-              "Union merge",
-              "Regenerate lockfiles",
-              "Agent, if needed"
-            ],
-            "highlight": 3
-          }
-        },
-        "footer": "Fewer tokens, fewer surprises"
-      },
-      "narration": "Conflicts are prevented first, fixed with plain git second, and only then handed to an agent.",
-      "transition": {
-        "type": "slide"
-      },
-      "durationMs": 7600
-    },
-    {
-      "id": "you",
-      "component": "SceneFrame",
-      "props": {
-        "eyebrow": "You stay in charge",
-        "headline": "It tells you when it needs you",
+        "eyebrow": "Observability",
+        "headline": "Built to be supervised",
         "content": {
           "component": "TerminalWindow",
           "props": {
             "title": "babysit",
             "lines": [
-              {
-                "prompt": true,
-                "text": "nsh wait"
-              },
-              {
-                "text": "{\"kind\": \"review_ready\", \"pr\": \"#58\"}"
-              }
+              { "prompt": true, "text": "nsh status" },
+              { "text": "issue-96  working     4m" },
+              { "text": "issue-41  in-review   2h  #58" },
+              { "prompt": true, "text": "nsh wait" },
+              { "text": "{\"kind\": \"review_ready\", \"pr\": \"#58\"}" }
             ]
           }
         },
-        "footer": "Only issues marked review wait for you"
+        "footer": "A supervising agent follows the events, not the logs"
       },
-      "narration": "When something needs you, it says so. Only the issues you marked for review wait for a human.",
-      "transition": {
-        "type": "fade",
-        "durationMs": 700
-      },
-      "durationMs": 8600
+      "narration": "nsh status shows every issue in flight. nsh wait blocks until something needs you, so a supervising agent can follow along without reading logs.",
+      "durationMs": 11500,
+      "transition": { "type": "fade", "durationMs": 700 }
     },
     {
       "id": "proof",
       "component": "BigNumber",
-      "props": {
-        "value": 45,
-        "label": "issues shipped for this video's renderer"
-      },
-      "narration": "The tool that rendered this video was built by Nightshift, about forty-five issues of it.",
-      "transition": {
-        "type": "fade",
-        "durationMs": 700
-      }
+      "props": { "value": 45, "label": "issues of the renderer behind this video, built by Nightshift" },
+      "narration": "The tool that rendered this video was built by Nightshift. About forty-five issues of it.",
+      "durationMs": 6500,
+      "transition": { "type": "fade", "durationMs": 700 }
     },
     {
       "id": "end",
@@ -208,16 +228,20 @@
         "icon": "clock",
         "name": "nightshift",
         "line": "You slice the work. It ships overnight.",
-        "accent": "Open source, fully local",
+        "accent": "github.com/aakaashkapoor/nightshift",
         "card": {
-          "component": "PromptCard",
+          "component": "TerminalWindow",
           "props": {
-            "text": "nsh daemon"
+            "title": "get started",
+            "lines": [
+              { "prompt": true, "text": "nsh init --repo ." },
+              { "prompt": true, "text": "nsh daemon" }
+            ]
           }
         }
       },
       "narration": "Nightshift. Open source, and it runs on your machine.",
-      "durationMs": 5600
+      "durationMs": 7000
     }
   ]
 }

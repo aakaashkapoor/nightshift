@@ -106,8 +106,9 @@ def test_lint_failure_refuses_and_never_calls_gh() -> None:
 def test_set_ready_goes_through_the_source() -> None:
     gh = Calls()
     set_issue(gh, 5, "ready")
-    assert gh.calls[0][:3] == ("issue", "edit", "5")
-    assert "nightshift:ready" in gh.calls[0]
+    calls = [c for c in gh.calls if c[:2] != ("label", "create")]
+    assert calls[0][:3] == ("issue", "edit", "5")
+    assert "nightshift:ready" in calls[0]
 
 
 @pytest.mark.parametrize(

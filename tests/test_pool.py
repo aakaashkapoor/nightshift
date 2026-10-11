@@ -13,7 +13,7 @@ import pytest
 from nightshift.config import RepoConfig
 from nightshift.control import Control
 from nightshift.daemon import Daemon
-from nightshift.events import EventLog
+from nightshift.events import ATTENTION, EventLog
 from nightshift.executor import Executor, RunOutput
 from nightshift.pipeline import CONTINUE_PROMPT
 from nightshift.runtime import Runtime
@@ -414,3 +414,37 @@ def test_child_exit_event_name(repo, tmp_path) -> None:
     d.run_forever(max_ticks=1, interval=0, sleep=lambda _s: None)
     assert _events(tmp_path)[-1]["kind"] == "child_exit"
     assert "daemon_exit" not in _kinds(tmp_path)
+
+
+class FlakyStartSource(LocalMdSource):
+    """set_status(IN_PROGRESS) fails for ``bad`` after a (simulated) partial write."""
+
+    def __init__(self, root, bad):
+        super().__init__(root)
+        self.bad = bad
+        self.failures = 0
+
+    def set_status(self, slice_id, status):
+        if slice_id == self.bad and status == "in-progress" and self.failures == 0:
+            self.failures += 1
+            raise RuntimeError("label not found")
+        super().set_status(slice_id, status)
+
+
+def test_failed_start_releases_lock_and_others_proceed(repo, tmp_path, caplog) -> None:
+    _write_slice(repo, "slice-001", touches=["src/a.py"])
+    _write_slice(repo, "slice-002")
+    d = _daemon(repo, tmp_path, Agent())
+    d.source = FlakyStartSource(repo, "slice-001")
+    with caplog.at_level(logging.WARNING):
+        results = d.tick()
+    assert [r.slice_id for r in results] == ["slice-002"]
+    assert "slice-001" not in d._held and "slice-001" not in d._running
+    assert "label not found" in caplog.text
+    failed = [e for e in _events(tmp_path) if e["kind"] == "start_failed"]
+    assert len(failed) == 1 and failed[0]["slice"] == "slice-001"
+    assert "label not found" in failed[0]["error"]
+    assert "start_failed" not in ATTENTION
+    # still ready: the next poll retries and succeeds
+    results = d.tick()
+    assert [r.slice_id for r in results] == ["slice-001"]

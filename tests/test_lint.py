@@ -138,7 +138,7 @@ class FakeGh:
 def test_github_set_needs_detail_labels_and_comments() -> None:
     gh = FakeGh()
     GitHubIssuesSource(".", gh=gh).set_needs_detail("issue-7", "- missing '## Goal'")
-    edit, comment = gh.calls
+    edit, comment = [c for c in gh.calls if c[:2] != ("label", "create")]
     assert edit[:5] == ("issue", "edit", "7", "--add-label", "nightshift:needs-detail")
     removed = edit[6].split(",")
     assert "nightshift:ready" in removed and "nightshift:needs-detail" not in removed

@@ -25,7 +25,7 @@ conflicts and landing a single clean commit. No hands.
 
 A 56-second tour, made with [motioncraft](https://github.com/aakaashkapoor/motioncraft) (which Nightshift built). Source: [`docs/video/storyboard.json`](./docs/video/storyboard.json).
 
-VIDEO_URL
+https://github.com/user-attachments/assets/e4ae00bc-8a8a-43a4-ae0b-6ff43ffd7c21
 
 ## Inspiration & credit
 

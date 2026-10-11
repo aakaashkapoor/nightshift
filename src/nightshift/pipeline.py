@@ -460,7 +460,9 @@ def run_slice_cli(
         sl,
         repo_path=repo_cfg.path,
         check_cmd=repo_cfg.check,
-        worktrees=WorktreeManager(repo_cfg.path, symlink_dirs=repo_cfg.symlink_dirs),
+        worktrees=WorktreeManager(
+            repo_cfg.path, symlink_dirs=repo_cfg.symlink_dirs, registries=repo_cfg.registries
+        ),
         executor=executor if executor is not None else Executor.for_repo(repo_cfg),
         base_branch=repo_cfg.base_branch,
     )
@@ -482,7 +484,9 @@ def run_resume_cli(
     if sl is None:
         raise FileNotFoundError(f"no slice {slice_id!r} in {repo_cfg.path}")
 
-    worktrees = WorktreeManager(repo_cfg.path, symlink_dirs=repo_cfg.symlink_dirs)
+    worktrees = WorktreeManager(
+        repo_cfg.path, symlink_dirs=repo_cfg.symlink_dirs, registries=repo_cfg.registries
+    )
     runtime = Runtime(runtime_path)
     ex = executor if executor is not None else Executor.for_repo(repo_cfg)
 

@@ -13,7 +13,7 @@ import os
 import shutil
 import subprocess
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -103,6 +103,7 @@ class WorktreeManager:
         symlink_dirs: list[str] | None = None,
         killer: Callable[[Path], None] = kill_processes_in,
         sleep: Callable[[float], None] = time.sleep,
+        registries: Sequence[str] = (),
     ):
         self.repo = Path(repo_path).resolve()
         if worktrees_root is not None:
@@ -114,6 +115,8 @@ class WorktreeManager:
         self.symlink_dirs = list(symlink_dirs or [])
         self.killer = killer
         self.sleep = sleep
+        # Append-only files (barrels, route tables) that merge with git's union driver.
+        self.registries = list(registries)
 
     def _git(self, *args: str) -> str:
         with _GIT_LOCK:
@@ -137,17 +140,30 @@ class WorktreeManager:
     def exists(self, slice_id: str) -> bool:
         return self.path_for(slice_id).exists()
 
-    def _exclude_nightshift_dir(self) -> None:
-        """Keep the agent's .nightshift/ (plan, result) out of every commit."""
+    def _info_file(self, name: str) -> Path:
+        """A file in the clone-local, never-committed <git-common-dir>/info/."""
         common = Path(self._git("rev-parse", "--git-common-dir").strip())
         if not common.is_absolute():
             common = self.repo / common
-        exclude = common / "info" / "exclude"
-        exclude.parent.mkdir(parents=True, exist_ok=True)
-        current = exclude.read_text(encoding="utf-8") if exclude.exists() else ""
-        if ".nightshift/" not in current.splitlines():
+        return common / "info" / name
+
+    @staticmethod
+    def _ensure_line(file: Path, line: str) -> None:
+        """Make sure ``line`` is in ``file`` (created if needed); idempotent."""
+        file.parent.mkdir(parents=True, exist_ok=True)
+        current = file.read_text(encoding="utf-8") if file.exists() else ""
+        if line not in current.splitlines():
             prefix = current.rstrip("\n") + "\n" if current.strip() else ""
-            exclude.write_text(prefix + ".nightshift/\n", encoding="utf-8")
+            file.write_text(prefix + line + "\n", encoding="utf-8")
+
+    def _exclude_nightshift_dir(self) -> None:
+        """Keep the agent's .nightshift/ (plan, result) out of every commit."""
+        self._ensure_line(self._info_file("exclude"), ".nightshift/")
+
+    def _union_merge_registries(self) -> None:
+        """Registry files merge with git's union driver, so parallel appends don't conflict."""
+        for path in self.registries:
+            self._ensure_line(self._info_file("attributes"), f"{path} merge=union")
 
     def create(self, slice_id: str, base_branch: str = "main") -> Worktree:
         self.root.mkdir(parents=True, exist_ok=True)
@@ -158,6 +174,7 @@ class WorktreeManager:
         branch = self.branch_for(slice_id)
         self._git("worktree", "add", "-b", branch, str(path), base_branch)
         self._exclude_nightshift_dir()
+        self._union_merge_registries()
         for name in self.symlink_dirs:
             src, dst = self.repo / name, path / name
             if src.exists() and not dst.exists():

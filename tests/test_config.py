@@ -128,3 +128,21 @@ def test_main_gate_defaults_on_and_can_be_disabled() -> None:
     cfg = Config.parse(SAMPLE + extra)
     assert cfg.repo("other-app").main_gate is True
     assert cfg.repo("off-app").main_gate is False
+
+
+def test_registries_default_empty_and_are_read() -> None:
+    cfg = Config.parse(
+        'repos:\n  a: { path: ., check: "true" }\n'
+        '  b: { path: ., check: "true", registries: [src/index.ts] }\n'
+    )
+    assert cfg.repo("a").registries == []
+    assert cfg.repo("b").registries == ["src/index.ts"]
+
+
+def test_daemon_gives_its_worktrees_the_registries(tmp_path) -> None:
+    from nightshift.config import RepoConfig
+    from nightshift.daemon import Daemon
+
+    cfg = RepoConfig(name="a", path=tmp_path, check="x", registries=["src/index.ts"])
+    daemon = Daemon(source=None, repo_cfg=cfg, executor=None)  # type: ignore[arg-type]
+    assert daemon.worktrees.registries == ["src/index.ts"]

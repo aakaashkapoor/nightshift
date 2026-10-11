@@ -102,6 +102,8 @@ class RepoConfig:
     sync: str | None = None
     # Runs in each fresh worktree right after it is created (e.g. `npm ci`).
     install: str | None = None
+    # Append-only files (barrel exports, route tables): merged with git's union driver.
+    registries: list = field(default_factory=list)
     # SPEC §9 / babysit: open a PR per slice and leave it for the driving agent to
     # review + merge. Defaults on for github-issues repos (resolved in Config).
     babysit: bool = False
@@ -191,6 +193,7 @@ class Config:
             push=entry.get("push", False),
             sync=entry.get("sync"),
             install=entry.get("install"),
+            registries=entry.get("registries", []),
             babysit=babysit,
             model=entry.get("model", self.defaults.get("model")),
             effort=effort,

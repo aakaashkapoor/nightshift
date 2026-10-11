@@ -13,6 +13,12 @@ app = typer.Typer(
 )
 
 
+pr_app = typer.Typer(
+    help="Babysit helpers: check out, merge and comment on a PR.", no_args_is_help=True
+)
+app.add_typer(pr_app, name="pr")
+
+
 @app.callback()
 def main() -> None:
     """Nightshift CLI."""
@@ -234,3 +240,49 @@ def stop(
 ) -> None:
     """Exit the daemon once the running slices finish."""
     _control("stop", repo, config)
+
+
+def _pr_step(step) -> None:
+    """Run one `nsh pr` step; any failure is one clear line and a non-zero exit."""
+    from nightshift.prtools import PrError
+
+    try:
+        typer.echo(step())
+    except (PrError, RuntimeError) as exc:
+        typer.echo(f"error: {exc}")
+        raise typer.Exit(code=1) from exc
+
+
+@pr_app.command("checkout")
+def pr_checkout(
+    number: int = typer.Argument(..., help="PR number"),
+    repo: Path = typer.Option(Path("."), "--repo", help="Target repo (default: current dir)"),
+    config: Path | None = typer.Option(None, "--config", help="Config file"),
+) -> None:
+    """Check the PR out into a sibling worktree, install dependencies, print its path."""
+    from nightshift import prtools
+
+    _pr_step(lambda: prtools.checkout_cli(number, repo, config_path=config))
+
+
+@pr_app.command("merge")
+def pr_merge(
+    number: int = typer.Argument(..., help="PR number"),
+    repo: Path = typer.Option(Path("."), "--repo", help="Target repo (default: current dir)"),
+) -> None:
+    """Squash-merge the PR once GitHub says it is mergeable; remove its worktree."""
+    from nightshift import prtools
+
+    _pr_step(lambda: prtools.merge_cli(number, repo))
+
+
+@pr_app.command("comment")
+def pr_comment(
+    number: int = typer.Argument(..., help="PR number"),
+    text: str = typer.Argument(..., help="What was verified"),
+    repo: Path = typer.Option(Path("."), "--repo", help="Target repo (default: current dir)"),
+) -> None:
+    """Comment on the PR with what was verified."""
+    from nightshift import prtools
+
+    _pr_step(lambda: prtools.comment_cli(number, text, repo))

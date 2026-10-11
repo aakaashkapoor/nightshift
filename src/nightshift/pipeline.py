@@ -20,10 +20,18 @@ from .check import run_check
 from .config import Config
 from .executor import Executor
 from .gitutil import LOCK as _GIT_LOCK
+from .limits import UsageLimitReached
 from .runtime import Runtime
 from .slice import Slice
 from .source import build_source
 from .worktree import WorktreeManager
+
+CONTINUE_PROMPT = (
+    "You were interrupted by the Claude usage limit and the limit has now reset. "
+    "Continue the same task from where you stopped: check what is already done in "
+    "this worktree, finish the rest, and make sure the acceptance criteria are met. "
+    "Do NOT commit, push, or create branches — the Nightshift harness handles git."
+)
 
 
 @dataclass
@@ -252,17 +260,30 @@ def run_slice(
     max_attempts: int = 3,
     reviewer=None,
     review_rounds: int = 2,
+    resume_session: str | None = None,
 ) -> SliceResult:
-    wt = worktrees.create(sl.id, base_branch)
+    """Work -> check -> review -> one commit.
+
+    ``resume_session`` continues a slice the usage limit interrupted: its preserved
+    worktree is reattached and the agent session resumed with ``CONTINUE_PROMPT``.
+    Raises ``UsageLimitReached`` if the limit hits; the worktree is left in place.
+    """
+    resuming = resume_session is not None and worktrees.exists(sl.id)
+    wt = worktrees.attach(sl.id) if resuming else worktrees.create(sl.id, base_branch)
 
     # Work: iterate until the check is green (or the cap trips).
     green = False
     attempts = 0
-    last_session: str | None = None
+    last_session: str | None = resume_session if resuming else None
     while attempts < max_attempts:
         attempts += 1
-        exec_result = executor.execute(wt.path, sl, resume_session=last_session)
+        if resuming and attempts == 1:
+            exec_result = executor.execute_prompt(wt.path, CONTINUE_PROMPT, last_session)
+        else:
+            exec_result = executor.execute(wt.path, sl, resume_session=last_session)
         last_session = exec_result.session_id or last_session
+        if exec_result.usage_limited:
+            raise UsageLimitReached(last_session)
         if run_check(check_cmd, wt.path).passed:
             green = True
             break
@@ -286,12 +307,15 @@ def run_slice(
 
             res = executor.execute_prompt(wt.path, fix_prompt(review.blocking), last_session)
             last_session = res.session_id or last_session
+            if res.usage_limited:
+                raise UsageLimitReached(last_session)
             if not run_check(check_cmd, wt.path).passed:
                 return _blocked("review fix broke the check")
         else:
             return _blocked("blocking review findings unresolved")
 
-    commit = _commit_all(wt.path, _commit_message(sl))
+    commit_fn = _commit_if_changes if resuming else _commit_all
+    commit = commit_fn(wt.path, _commit_message(sl))
     sl.status = "done"
     sl.attempts = attempts
     return SliceResult(sl.id, "done", attempts, commit, wt.branch, "check passed", last_session)

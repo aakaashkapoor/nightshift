@@ -6,10 +6,16 @@ from pathlib import Path
 
 import pytest
 
+from nightshift.config import RepoConfig
+from nightshift.daemon import LIMITED, Daemon
+from nightshift.events import EventLog
 from nightshift.executor import Executor, RunOutput
-from nightshift.limits import UsageLimitReached
+from nightshift.limits import FALLBACK_WAIT, RESET_GRACE, UsageLimitReached
 from nightshift.pipeline import CONTINUE_PROMPT, run_slice
+from nightshift.runtime import Runtime
 from nightshift.slice import Slice
+from nightshift.source import LocalMdSource
+from nightshift.state import StateStore
 from nightshift.worktree import WorktreeManager
 
 LIMIT = RunOutput(
@@ -169,3 +175,195 @@ def test_limit_during_review_fix_raises(repo, tmp_path) -> None:
             executor=Executor(runner=Script(_ok(), LIMIT)),
             reviewer=OneBlocking(),
         )
+
+
+def _write_slice(repo, sid, status="ready", deps=None) -> None:
+    deps_line = f"depends_on: {deps}\n" if deps is not None else ""
+    (repo / ".slices" / f"{sid}.md").write_text(
+        f"---\nid: {sid}\ntitle: {sid}\nstatus: {status}\n{deps_line}---\n## Goal\ndo it\n",
+        encoding="utf-8",
+    )
+
+
+class Clock:
+    def __init__(self, t: float = 1000.0):
+        self.t = t
+
+    def __call__(self) -> float:
+        return self.t
+
+
+class Flip:
+    """Hits the limit while `limited` is True, works normally otherwise."""
+
+    def __init__(self):
+        self.limited = True
+        self.prompts: list[str] = []
+
+    def __call__(self, argv, cwd, stdin) -> RunOutput:
+        self.prompts.append(stdin)
+        if self.limited:
+            return LIMIT
+        Path(cwd, f"{Path(cwd).name}.txt").write_text("x", encoding="utf-8")
+        return _ok("s-after")
+
+
+def _daemon(repo, tmp_path, agent, clock, resets=None) -> Daemon:
+    return Daemon(
+        source=LocalMdSource(repo),
+        repo_cfg=RepoConfig(name="demo", path=repo, check="echo ok", base_branch="main"),
+        executor=Executor(runner=agent),
+        worktrees=WorktreeManager(repo, worktrees_root=tmp_path / "wts"),
+        runtime=Runtime(tmp_path / "home" / "runtime.json"),
+        events=EventLog(tmp_path / "home" / "events.jsonl", clock=clock),
+        state=StateStore(tmp_path / "home" / "state.json", clock=clock),
+        clock=clock,
+        reset_lookup=lambda sid: resets,
+    )
+
+
+def _kinds(tmp_path) -> list[str]:
+    events, _ = EventLog(tmp_path / "home" / "events.jsonl").read_from(0)
+    return [e["kind"] for e in events]
+
+
+def test_limit_pauses_instead_of_blocking(repo, tmp_path) -> None:
+    _write_slice(repo, "slice-001")
+    clock = Clock()
+    d = _daemon(repo, tmp_path, Flip(), clock, resets=5000.0)
+    results = d.tick()
+    assert [r.status for r in results] == [LIMITED]
+    assert LocalMdSource(repo).get("slice-001").status == "ready"  # not blocked
+    assert d.paused_until == 5000.0 + RESET_GRACE
+    assert _kinds(tmp_path) == ["slice_started", "paused_limit"]
+    snap = StateStore(tmp_path / "home" / "state.json").snapshot()
+    assert snap["daemon"]["status"] == "paused_limit"
+    assert snap["slices"]["slice-001"]["phase"] == "queued"
+    assert Runtime(tmp_path / "home" / "runtime.json").get("slice-001")["interrupted"] is True
+
+
+def test_paused_tick_does_nothing_then_resumes_session(repo, tmp_path) -> None:
+    _write_slice(repo, "slice-001")
+    clock = Clock()
+    agent = Flip()
+    d = _daemon(repo, tmp_path, agent, clock, resets=5000.0)
+    d.tick()
+    agent.limited = False
+    clock.t = 2000.0
+    assert d.tick() == []  # still paused
+    assert len(agent.prompts) == 1
+    clock.t = 5000.0 + RESET_GRACE
+    results = d.tick()
+    assert [r.status for r in results] == ["done"]
+    assert agent.prompts[-1] == CONTINUE_PROMPT
+    assert d.paused_until is None
+    assert _kinds(tmp_path)[-3:] == ["resumed", "slice_started", "merged"]
+    assert StateStore(tmp_path / "home" / "state.json").snapshot()["daemon"]["status"] == "running"
+    assert Runtime(tmp_path / "home" / "runtime.json").get("slice-001") == {}
+
+
+def test_unknown_reset_uses_fallback_and_one_pause_event(repo, tmp_path) -> None:
+    _write_slice(repo, "slice-001")
+    _write_slice(repo, "slice-002")
+    clock = Clock()
+    d = _daemon(repo, tmp_path, Flip(), clock, resets=None)
+    d.tick()
+    assert d.paused_until == 1000.0 + FALLBACK_WAIT
+    assert _kinds(tmp_path).count("paused_limit") == 1
+
+
+def test_all_done_and_stalled_emitted_once(repo, tmp_path) -> None:
+    clock = Clock()
+    agent = Flip()
+    agent.limited = False
+    _write_slice(repo, "slice-001")
+    _write_slice(repo, "slice-002", status="blocked")
+    _write_slice(repo, "slice-003", deps="[slice-002]")
+    d = _daemon(repo, tmp_path, agent, clock)
+    d.tick()  # runs slice-001
+    d.tick()  # idle: 002 blocked, 003 waits on it
+    d.tick()
+    assert _kinds(tmp_path).count("stalled") == 1
+    events, _ = EventLog(tmp_path / "home" / "events.jsonl").read_from(0)
+    stalled = next(e for e in events if e["kind"] == "stalled")
+    assert stalled["waiting"] == {"slice-002": "blocked", "slice-003": "ready"}
+    LocalMdSource(repo).set_status("slice-002", "done")
+    LocalMdSource(repo).set_status("slice-003", "done")
+    d.tick()
+    d.tick()
+    assert _kinds(tmp_path).count("all_done") == 1
+
+
+def test_blocked_slice_emits_event_and_state(repo, tmp_path) -> None:
+    _write_slice(repo, "slice-001")
+    clock = Clock()
+    agent = Flip()
+    agent.limited = False
+    d = _daemon(repo, tmp_path, agent, clock)
+    d.repo_cfg.check = "exit 1"
+    d.max_attempts = 1
+    d.tick()
+    assert "blocked" in _kinds(tmp_path)
+    snap = StateStore(tmp_path / "home" / "state.json").snapshot()
+    assert snap["slices"]["slice-001"]["phase"] == "blocked"
+    assert Runtime(tmp_path / "home" / "runtime.json").get("slice-001")["interrupted"] is False
+
+
+def test_limit_during_conflict_resolution_pauses(repo, tmp_path) -> None:
+    class LimitResolver:
+        def __call__(self, worktree_path):
+            raise UsageLimitReached("res-1")
+
+    class SameFile:
+        def __call__(self, argv, cwd, stdin) -> RunOutput:
+            readme = Path(cwd, "README.md")
+            readme.write_text(
+                readme.read_text(encoding="utf-8") + Path(cwd).name + "\n", encoding="utf-8"
+            )
+            return _ok()
+
+    _write_slice(repo, "slice-001")
+    _write_slice(repo, "slice-002")
+    clock = Clock()
+    d = _daemon(repo, tmp_path, SameFile(), clock, resets=9000.0)
+    d.resolver = LimitResolver()
+    results = d.tick()
+    assert sorted(r.status for r in results) == ["done", LIMITED]
+    limited = next(r for r in results if r.status == LIMITED)
+    assert LocalMdSource(repo).get(limited.slice_id).status == "ready"
+    assert d.paused_until == 9000.0 + RESET_GRACE
+    wt = tmp_path / "wts" / limited.slice_id
+    assert "rebase in progress" not in _git(wt, "status")  # the rebase was aborted
+
+
+def test_run_forever_records_exit_and_survives_tick_errors(repo, tmp_path) -> None:
+    clock = Clock()
+    d = _daemon(repo, tmp_path, Flip(), clock)
+    calls = {"n": 0}
+
+    def boom():
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("gh down")
+        return []
+
+    d.tick = boom  # type: ignore[method-assign]
+    d.run_forever(interval=0, max_ticks=2, sleep=lambda s: None)
+    assert calls["n"] == 2
+    snap = StateStore(tmp_path / "home" / "state.json").snapshot()
+    assert snap["daemon"]["status"] == "stopped"
+    events, _ = EventLog(tmp_path / "home" / "events.jsonl").read_from(0)
+    assert events[-1] == {"ts": 1000.0, "kind": "daemon_exit", "reason": "stopped"}
+
+
+def test_run_forever_records_interrupt_reason(repo, tmp_path) -> None:
+    d = _daemon(repo, tmp_path, Flip(), Clock())
+
+    def interrupt():
+        raise KeyboardInterrupt()
+
+    d.tick = interrupt  # type: ignore[method-assign]
+    with pytest.raises(KeyboardInterrupt):
+        d.run_forever(interval=0, max_ticks=1, sleep=lambda s: None)
+    events, _ = EventLog(tmp_path / "home" / "events.jsonl").read_from(0)
+    assert events[-1]["reason"] == "KeyboardInterrupt: "

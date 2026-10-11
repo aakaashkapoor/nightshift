@@ -9,27 +9,39 @@ interval.
 from __future__ import annotations
 
 import logging
+import os
 import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from .config import Config, RepoConfig
+from .events import EventLog
 from .executor import Executor
+from .limits import UsageLimitReached, reset_time, resume_at
 from .notifier import NullNotifier, build_notifier
-from .pipeline import SliceResult, integrate_branch, prepare_branch, run_slice, sync_base
+from .pipeline import (
+    SliceResult,
+    _git_ok,
+    integrate_branch,
+    prepare_branch,
+    run_slice,
+    sync_base,
+)
 from .pr import BABYSIT_LABEL, GitHubPR, open_pr_for_slice
 from .resolver import Resolver
 from .review import AgentReviewer
 from .scheduler import Dag
 from .slice import Slice
 from .source import Source, build_source
+from .state import StateStore
 from .worktree import WorktreeManager
 
 IN_PROGRESS = "in-progress"
 DONE = "done"
 BLOCKED = "blocked"
 IN_REVIEW = "in-review"
+LIMITED = "limited"
 
 log = logging.getLogger("nightshift")
 _LOG_FMT = logging.Formatter("%(asctime)s  nightshift  %(message)s", "%H:%M:%S")
@@ -66,6 +78,10 @@ class Daemon:
         runtime=None,
         reviewer=None,
         pr=None,
+        events: EventLog | None = None,
+        state: StateStore | None = None,
+        clock: Callable[[], float] = time.time,
+        reset_lookup: Callable[[str | None], float | None] = reset_time,
     ):
         self.source = source
         self.repo_cfg = repo_cfg
@@ -81,6 +97,28 @@ class Daemon:
         self.runtime = runtime
         self.reviewer = reviewer
         self.pr = pr
+        self.events = events
+        self.state = state
+        self.clock = clock
+        self.reset_lookup = reset_lookup
+        self.paused_until: float | None = None
+        self._idle: str | None = None
+
+    def _emit(self, kind: str, slice_id: str | None = None, **data) -> None:
+        if self.events is not None:
+            self.events.emit(kind, slice_id, **data)
+
+    def _phase(self, slice_id: str, phase: str, **fields) -> None:
+        if self.state is not None:
+            self.state.set_slice(slice_id, phase, **fields)
+
+    def _drop(self, slice_id: str) -> None:
+        if self.state is not None:
+            self.state.drop_slice(slice_id)
+
+    def _daemon_state(self, **fields) -> None:
+        if self.state is not None:
+            self.state.set_daemon(**fields)
 
     def _select_batch(self, runnable: list[Slice]) -> list[Slice]:
         """Up to max_parallel mutually non-overlapping slices.
@@ -101,6 +139,8 @@ class Daemon:
         return selected
 
     def _run_one(self, sl: Slice) -> SliceResult:
+        entry = self.runtime.get(sl.id) if self.runtime is not None else {}
+        resume = entry.get("session_id") if entry.get("interrupted") else None
         try:
             return run_slice(
                 sl,
@@ -111,6 +151,17 @@ class Daemon:
                 base_branch=self.repo_cfg.base_branch,
                 max_attempts=self.max_attempts,
                 reviewer=self.reviewer,
+                resume_session=resume,
+            )
+        except UsageLimitReached as exc:
+            return SliceResult(
+                sl.id,
+                LIMITED,
+                0,
+                None,
+                self.worktrees.branch_for(sl.id),
+                "usage limit",
+                exc.session_id or resume,
             )
         except Exception as exc:  # a git/exec error must not kill the tick
             return SliceResult(
@@ -122,6 +173,8 @@ class Daemon:
         self.worktrees.preserve(work.slice_id)
         self.source.set_blocked(work.slice_id, reason)
         self.notifier.notify("blocked", f"{work.slice_id}: {reason}")
+        self._emit("blocked", work.slice_id, reason=reason)
+        self._phase(work.slice_id, BLOCKED, detail=reason)
         return SliceResult(
             work.slice_id,
             BLOCKED,
@@ -132,8 +185,46 @@ class Daemon:
             work.session_id,
         )
 
+    def _limited(self, work: SliceResult) -> SliceResult:
+        """Usage limit: keep the worktree, put the slice back in the queue, pause."""
+        self.worktrees.preserve(work.slice_id)
+        self.source.set_status(work.slice_id, "ready")
+        self._phase(work.slice_id, "queued", detail="usage limit")
+        self._pause(work.session_id)
+        return SliceResult(
+            work.slice_id,
+            LIMITED,
+            work.attempts,
+            work.commit,
+            work.branch,
+            "usage limit",
+            work.session_id,
+        )
+
+    def _pause(self, session_id: str | None) -> None:
+        until = resume_at(self.reset_lookup(session_id), self.clock())
+        if self.paused_until is not None:
+            self.paused_until = max(self.paused_until, until)
+            return
+        self.paused_until = until
+        log.warning(
+            "usage limit reached; pausing until %s",
+            time.strftime("%H:%M", time.localtime(until)),
+        )
+        self._emit("paused_limit", until=until)
+        self._daemon_state(status="paused_limit", paused_until=until)
+
     def _integrate(self, work: SliceResult) -> SliceResult:
         """Serial merge-train step for one committed branch (SPEC §6)."""
+        if work.status == LIMITED:
+            return self._limited(work)
+        try:
+            return self._ship(work)
+        except UsageLimitReached:
+            _git_ok(self.worktrees.path_for(work.slice_id), "rebase", "--abort")
+            return self._limited(work)
+
+    def _ship(self, work: SliceResult) -> SliceResult:
         if work.status != DONE:  # Work itself failed -> nothing to integrate
             return self._block(work, work.detail)
         if self.repo_cfg.babysit:
@@ -152,6 +243,8 @@ class Daemon:
         if result.merged:
             self.worktrees.teardown(work.slice_id)
             self.source.set_status(work.slice_id, DONE)
+            self._emit("merged", work.slice_id, commit=result.commit)
+            self._drop(work.slice_id)
             return SliceResult(
                 work.slice_id,
                 DONE,
@@ -189,6 +282,8 @@ class Daemon:
         self.worktrees.teardown(work.slice_id)  # the branch lives on origin now
         self.source.set_status(work.slice_id, IN_REVIEW)
         self.notifier.notify("in-review", f"{work.slice_id}: {url}")
+        self._emit("review_ready", work.slice_id, pr=url)
+        self._phase(work.slice_id, IN_REVIEW, pr=url)
         return SliceResult(
             work.slice_id, IN_REVIEW, work.attempts, work.commit, work.branch, url, work.session_id
         )
@@ -208,9 +303,30 @@ class Daemon:
             if state == "MERGED":
                 self.source.set_status(sl.id, DONE)
                 sl.status = DONE
+                self._emit("merged", sl.id)
+                self._drop(sl.id)
             elif state == "CLOSED":
-                self.source.set_blocked(sl.id, "PR closed without merging (babysit)")
+                reason = "PR closed without merging (babysit)"
+                self.source.set_blocked(sl.id, reason)
                 sl.status = BLOCKED
+                self._emit("blocked", sl.id, reason=reason)
+                self._phase(sl.id, BLOCKED, detail=reason)
+
+    def _note_idle(self, slices: list[Slice]) -> None:
+        open_ = {s.id: s.status for s in slices if s.status != DONE}
+        if not open_:
+            kind: str | None = "all_done"
+        elif any(st in (IN_PROGRESS, IN_REVIEW) for st in open_.values()):
+            kind = None
+        else:
+            kind = "stalled"
+        if kind is not None and kind != self._idle:
+            if kind == "stalled":
+                log.warning("stalled: nothing runnable; open slices: %s", open_)
+                self._emit(kind, waiting=open_)
+            else:
+                self._emit(kind)
+        self._idle = kind
 
     def tick(self) -> list[SliceResult]:
         """One pass: parallel Work on a non-overlapping batch, then a serial merge-train."""
@@ -220,15 +336,30 @@ class Daemon:
             return []
         if self.repo_cfg.babysit:
             self._watch_reviews(slices)
+        if self.paused_until is not None:
+            if self.clock() < self.paused_until:
+                log.info(
+                    "paused (usage limit) until %s",
+                    time.strftime("%H:%M", time.localtime(self.paused_until)),
+                )
+                return []
+            self.paused_until = None
+            self._emit("resumed")
+            self._daemon_state(status="running", paused_until=None)
+            log.info("usage limit reset; resuming")
         if self.runtime is not None:
             self.runtime.reconcile(known_slice_ids={s.id for s in slices}, worktrees=self.worktrees)
         batch = self._select_batch(Dag.build(slices).runnable())
         if not batch:
             log.info("idle — %d slice(s), none runnable", len(slices))
+            self._note_idle(slices)
             return []
+        self._idle = None
         log.info("running %d slice(s): %s", len(batch), ", ".join(s.id for s in batch))
         for sl in batch:
             self.source.set_status(sl.id, IN_PROGRESS)
+            self._emit("slice_started", sl.id)
+            self._phase(sl.id, "working")
         # Work: parallel, each in its own worktree.
         with ThreadPoolExecutor(max_workers=self.max_parallel) as pool:
             work_results = list(pool.map(self._run_one, batch))
@@ -239,6 +370,8 @@ class Daemon:
                 log.info("%s done (%s)", r.slice_id, (r.commit or "")[:8])
             elif r.status == IN_REVIEW:
                 log.info("%s in review: %s", r.slice_id, r.detail)
+            elif r.status == LIMITED:
+                log.warning("%s paused on the usage limit", r.slice_id)
             else:
                 log.warning("%s BLOCKED — %s", r.slice_id, r.detail)
         if self.runtime is not None:
@@ -246,7 +379,12 @@ class Daemon:
                 if r.status in (DONE, IN_REVIEW):
                     self.runtime.forget(r.slice_id)
                 else:
-                    self.runtime.record(r.slice_id, session_id=r.session_id, branch=r.branch)
+                    self.runtime.record(
+                        r.slice_id,
+                        session_id=r.session_id,
+                        branch=r.branch,
+                        interrupted=r.status == LIMITED,
+                    )
         return results
 
     def run_forever(
@@ -256,13 +394,26 @@ class Daemon:
         max_ticks: int | None = None,
         sleep: Callable[[float], None] = time.sleep,
     ) -> None:
+        self._daemon_state(status="running", pid=os.getpid())
+        reason = "stopped"
         ticks = 0
-        while max_ticks is None or ticks < max_ticks:
-            self.tick()
-            ticks += 1
-            if max_ticks is not None and ticks >= max_ticks:
-                break
-            sleep(interval)
+        try:
+            while max_ticks is None or ticks < max_ticks:
+                try:
+                    self.tick()
+                except Exception:
+                    log.exception("tick failed; continuing")
+                ticks += 1
+                if max_ticks is not None and ticks >= max_ticks:
+                    break
+                sleep(interval)
+        except BaseException as exc:
+            reason = f"{type(exc).__name__}: {exc}"
+            raise
+        finally:
+            log.info("daemon exiting (%s)", reason)
+            self._daemon_state(status="stopped")
+            self._emit("daemon_exit", reason=reason)
 
 
 def run_daemon_cli(

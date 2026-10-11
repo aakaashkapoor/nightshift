@@ -290,3 +290,47 @@ def test_checkout_remote_replaces_a_stale_worktree(repo, tmp_path) -> None:
 
     assert not (got.path / "stale.txt").exists()
     assert _git(got.path, "branch", "--show-current").strip() == "nightshift/slice-001"
+
+
+def test_gate_worktree_creates_detached_checkout(wm, repo) -> None:
+    head = _git(repo, "rev-parse", "main").strip()
+    path = wm.gate_worktree(head)
+    assert path == wm.root / "_main-gate"
+    assert (path / "README.md").exists()
+    assert _git(path, "rev-parse", "HEAD").strip() == head
+    assert _git(path, "branch", "--show-current").strip() == ""  # detached
+
+
+def test_gate_worktree_reuse_cleans_but_keeps_deps(wm, repo) -> None:
+    first = wm.gate_worktree(_git(repo, "rev-parse", "main").strip())
+    (first / "node_modules").mkdir()
+    (first / "node_modules" / "dep.txt").write_text("d", encoding="utf-8")
+    (first / ".venv").mkdir()
+    (first / ".venv" / "v.txt").write_text("v", encoding="utf-8")
+    (first / "junk.pyc").write_text("x", encoding="utf-8")
+    (first / "README.md").write_text("dirty\n", encoding="utf-8")
+    (repo / "new.txt").write_text("n", encoding="utf-8")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-m", "second")
+    head = _git(repo, "rev-parse", "main").strip()
+    second = wm.gate_worktree(head)
+    assert second == first
+    assert _git(second, "rev-parse", "HEAD").strip() == head
+    assert (second / "new.txt").exists()
+    assert not (second / "junk.pyc").exists()
+    assert (second / "README.md").read_text(encoding="utf-8") == "hello\n"
+    assert (second / "node_modules" / "dep.txt").exists()
+    assert (second / ".venv" / "v.txt").exists()
+
+
+def test_list_slices_ignores_gate_worktree(wm, repo) -> None:
+    wm.create("slice-001")
+    wm.gate_worktree(_git(repo, "rev-parse", "main").strip())
+    assert wm.list_slices() == ["slice-001"]
+
+
+def test_gate_worktree_bad_commit_raises(wm, repo) -> None:
+    head = _git(repo, "rev-parse", "main").strip()
+    wm.gate_worktree(head)
+    with pytest.raises(RuntimeError, match="checkout"):
+        wm.gate_worktree("deadbeef" * 5)

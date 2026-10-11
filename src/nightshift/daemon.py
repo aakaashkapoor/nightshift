@@ -742,7 +742,14 @@ class Daemon:
             return True
         if head == self._red:
             return False
-        result = run_check(cfg.check, cfg.path)
+        try:
+            gate = self.worktrees.gate_worktree(head)
+        except RuntimeError as exc:
+            log.warning("main gate: can't prepare the gate worktree (%s)", exc)
+            return True  # a gate infrastructure problem must not stall the queue
+        result = run_check(cfg.install, gate) if cfg.install else None
+        if result is None or result.passed:
+            result = run_check(cfg.check, gate)
         if result.passed:
             if self._red is not None:
                 self._emit("main_green", commit=head)

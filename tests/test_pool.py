@@ -256,6 +256,65 @@ def test_main_gate_survives_git_error(repo, tmp_path, caplog) -> None:
     assert [r.status for r in results] == ["blocked"]  # the gate didn't stall the queue
 
 
+JUNK_CHECK = f"\"{sys.executable}\" -c \"open('junk.pyc','w').write('x')\""
+
+
+class JunkAgent(Agent):
+    """Commits the same file path the check leaves behind as an untracked artifact."""
+
+    def __call__(self, argv, cwd, stdin) -> RunOutput:
+        Path(cwd, "junk.pyc").write_text("slice", encoding="utf-8")
+        return super().__call__(argv, cwd, stdin)
+
+
+def test_main_gate_never_dirties_the_users_checkout(repo, tmp_path) -> None:
+    _write_slice(repo, "slice-001")
+    d = _daemon(repo, tmp_path, JunkAgent(), check=JUNK_CHECK)
+    d.repo_cfg.main_gate = True
+    assert [r.status for r in d.tick()] == ["done"]
+    status = _git(repo, "status", "--porcelain", "--untracked-files=all").splitlines()
+    assert [ln for ln in status if ".slices/" not in ln] == []  # the slice board is the user's
+    assert _git(repo, "ls-files", "junk.pyc") == "junk.pyc"  # the slice's copy merged in
+    assert (tmp_path / "wts" / "_main-gate").is_dir()
+
+
+def test_main_gate_runs_install_in_gate_worktree(repo, tmp_path) -> None:
+    _write_slice(repo, "slice-001", status="blocked")
+    d = _daemon(repo, tmp_path, Agent())
+    d.repo_cfg.main_gate = True
+    d.repo_cfg.install = f"\"{sys.executable}\" -c \"open('installed.txt','w').write('x')\""
+    d.repo_cfg.check = f'"{sys.executable}" -c "import pathlib,sys; sys.exit(not pathlib.Path(\'installed.txt\').exists())"'
+    d.tick()
+    assert d._green == _git(repo, "rev-parse", "main")
+    assert not (repo / "installed.txt").exists()
+
+
+def test_main_gate_install_failure_is_red(repo, tmp_path) -> None:
+    _write_slice(repo, "slice-001")
+    d = _daemon(repo, tmp_path, Agent())
+    d.repo_cfg.main_gate = True
+    d.repo_cfg.install = f'"{sys.executable}" -c "print(\'install boom\'); raise SystemExit(3)"'
+    assert d.tick() == []
+    assert d._red == _git(repo, "rev-parse", "main")
+    red = [e for e in _events(tmp_path) if e["kind"] == "main_red"]
+    assert len(red) == 1 and "install boom" in str(red[0])
+
+
+def test_main_gate_survives_gate_worktree_error(repo, tmp_path, caplog) -> None:
+    _write_slice(repo, "slice-001")
+    d = _daemon(repo, tmp_path, Agent())
+    d.repo_cfg.main_gate = True
+
+    def boom(_commit):
+        raise RuntimeError("worktree broke")
+
+    d.worktrees.gate_worktree = boom
+    with caplog.at_level(logging.WARNING, logger="nightshift"):
+        results = d.tick()
+    assert "main gate: can't prepare the gate worktree" in caplog.text
+    assert [r.status for r in results] == ["done"]
+
+
 def test_pause_and_stop_controls(repo, tmp_path) -> None:
     _write_slice(repo, "slice-001")
     control = Control(tmp_path / "home" / "control.json")

@@ -20,6 +20,7 @@ from pathlib import Path
 from .gitutil import LOCK as _GIT_LOCK
 
 BRANCH_PREFIX = "nightshift/"
+GATE_DIR = "_main-gate"  # Nightshift-owned worktree the main gate runs in; not a slice
 
 
 def _force_rmtree(path: Path) -> None:
@@ -243,4 +244,34 @@ class WorktreeManager:
     def list_slices(self) -> list[str]:
         if not self.root.exists():
             return []
-        return sorted(p.name for p in self.root.iterdir() if p.is_dir())
+        return sorted(p.name for p in self.root.iterdir() if p.is_dir() and p.name != GATE_DIR)
+
+    def gate_worktree(self, commit: str) -> Path:
+        """A detached worktree at ``commit`` for the main-green gate.
+
+        Running the check in the user's checkout leaves build artifacts there, which
+        later break ``git merge --ff-only``. Reused between runs (installed deps in
+        node_modules / .venv are kept; everything else untracked is dropped).
+        """
+        path = self.root / GATE_DIR
+        if path.exists():
+            self._git_in(path, "checkout", "--detach", "--force", commit)
+            self._git_in(path, "clean", "-fdx", "-e", "node_modules", "-e", ".venv")
+        else:
+            self.root.mkdir(parents=True, exist_ok=True)
+            self._git("config", "core.longpaths", "true")
+            self._git("worktree", "add", "--detach", str(path), commit)
+        return path
+
+    @staticmethod
+    def _git_in(path: Path, *args: str) -> None:
+        with _GIT_LOCK:
+            result = subprocess.run(
+                ["git", "-C", str(path), *args],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+            )
+        if result.returncode != 0:
+            raise RuntimeError(f"git {' '.join(args)} failed: {result.stderr.strip()}")

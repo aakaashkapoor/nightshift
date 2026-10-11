@@ -49,9 +49,12 @@ Don't tail the daemon log. Nightshift tells you when it needs you:
    - `paused_limit` (with `until`) / `resumed`: the Claude usage limit. Nothing to do.
    - `stalled` (with `waiting`): nothing can run. Usually a blocked dependency.
    - `all_done`: the queue is empty.
+   - `main_red` (with `output`): `main` is failing its check, so no slice will start. Fix `main` first.
    - `daemon_exit` (with `reason`): the daemon stopped. Restart it.
 3. Handle the event, then start `nsh wait` again. It remembers where it stopped, so
    nothing is missed between runs.
+
+Use `nsh pause` / `nsh unpause` / `nsh stop` instead of killing the process.
 
 ## Rules
 

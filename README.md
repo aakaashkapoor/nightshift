@@ -51,10 +51,13 @@ grill / nightshift-slice → slices (local .md OR GitHub Issues)
 ```bash
 nsh init --repo .          # register a repo (auto-detects the check command)
 nsh run <slice>            # run one slice by hand: Work → check → review → commit
-nsh daemon [--once]        # drain ready slices (parallel Work + serial merge-train)
+nsh daemon [--once]        # drain ready slices (parallel Work + serial merge-train); restarts itself if it crashes
 nsh resume <slice>         # resume a blocked slice on its preserved worktree
 nsh status [--json]        # what the daemon is doing: phase and age of every slice
 nsh wait [--timeout N]     # block until something needs you; prints JSON event lines
+nsh pause                  # stop starting new slices (running ones finish)
+nsh unpause                # start new slices again
+nsh stop                   # exit the daemon once running slices finish
 nsh version
 ```
 

@@ -76,8 +76,14 @@ def render_status(snapshot: dict, now: float) -> str:
         head = "daemon: not started"
     elif status == "paused_limit":
         head = f"daemon: paused_limit (resumes in {_ago(daemon.get('paused_until', now) - now)})"
+    elif status == "paused":
+        head = "daemon: paused (nsh unpause to resume)"
+    elif status == "stopping":
+        head = "daemon: stopping (after running slices)"
     else:
         head = f"daemon: {status} (pid {daemon.get('pid', '?')}, updated {_ago(now - daemon.get('updated', now))} ago)"
+    if daemon.get("main") == "red":
+        head += " · main RED"
     slices = snapshot.get("slices") or {}
     if not slices:
         return f"{head}\nno slices in flight"

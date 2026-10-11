@@ -83,3 +83,20 @@ def test_render_status_paused_and_empty() -> None:
 
 def test_render_status_unknown_daemon() -> None:
     assert render_status({"daemon": {}, "slices": {}}, now=0.0).startswith("daemon: not started")
+
+
+def test_render_status_paused_stopping_and_main_red() -> None:
+    paused = render_status({"daemon": {"status": "paused"}, "slices": {}}, now=0.0)
+    assert paused.startswith("daemon: paused (nsh unpause to resume)")
+    stopping = render_status({"daemon": {"status": "stopping"}, "slices": {}}, now=0.0)
+    assert stopping.startswith("daemon: stopping (after running slices)")
+    red = render_status(
+        {"daemon": {"status": "running", "pid": 1, "updated": 0.0, "main": "red"}, "slices": {}},
+        now=0.0,
+    )
+    assert red.splitlines()[0].endswith(" · main RED")
+    green = render_status(
+        {"daemon": {"status": "running", "pid": 1, "updated": 0.0, "main": "green"}, "slices": {}},
+        now=0.0,
+    )
+    assert "RED" not in green

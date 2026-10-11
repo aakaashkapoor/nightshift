@@ -39,31 +39,51 @@ and [subscribe to his work](https://www.aihero.dev/) — this wouldn't exist wit
 ## How it works (the loop)
 
 ```
-grill / nightshift-slice → slices (local .md OR GitHub Issues)
-        → daemon picks up ready slices (DAG-scheduled, up to 5 in parallel)
-        → each in its own worktree: Work → check → AI review → Ship
-        → conflicts auto-resolved by an agent, serial merge train
-        → ONE clean commit, PR closes the issue, code pushed
+nightshift-slice (interview) -> nsh issue new -> GitHub issues (sized S/M/L, linted)
+        -> daemon worker pool: best ready slice first (critical path), Touches lock
+        -> each in its own worktree: build -> check -> content + file gates -> AI review
+        -> rebase (conflict ladder) -> PR
+        -> no `review` label: merges itself   |   `review` label: waits for babysit
+        -> usage limit hit: pause until reset, resume the same session
 ```
+
+The driving agent (`nightshift-babysit`) follows the daemon with `nsh wait` and only
+steps in for PRs labelled `review`, questions, blocked slices and a red `main`.
 
 ## Commands
 
 ```bash
-nsh init --repo .          # register a repo (auto-detects the check command)
-nsh run <slice>            # run one slice by hand: Work → check → review → commit
-nsh daemon [--once]        # drain ready slices (parallel Work + serial merge-train); restarts itself if it crashes
+nsh init --repo .          # register a repo (auto-detects check, install, sync)
+nsh daemon [--once]        # run the worker pool; restarts itself if it crashes
+nsh run <slice>            # run one slice by hand
 nsh resume <slice>         # resume a blocked slice on its preserved worktree
-nsh status [--json]        # what the daemon is doing: phase and age of every slice
-nsh wait [--timeout N]     # block until something needs you; prints JSON event lines
-nsh pause                  # stop starting new slices (running ones finish)
-nsh unpause                # start new slices again
-nsh stop                   # exit the daemon once running slices finish
+nsh status [--json]        # phase and age of every slice, waiting PRs, pause state
+nsh wait [--timeout N]     # block until something needs you; prints a JSON event line
+nsh pause | unpause | stop # stop starting slices / start again / exit after running ones
+
+nsh issue new --title T --size M --goal G --acceptance A --touches PATH [--review] [--visual]
+                           # file a linted v2 issue (or --body-file F); prints the URL
+nsh issue set <n> ready|review|no-review|visual|no-visual|hold
+                           # the only way labels change by hand
+nsh answer <slice> "..."   # answer an agent's question; the slice resumes its session
+
+nsh pr checkout <n>        # worktree for a PR with dependencies installed
+nsh pr comment <n> "..."   # record what you verified
+nsh pr merge <n>           # wait for mergeable, squash, delete branch, clean worktree
 nsh version
 ```
 
-Config lives in `~/.nightshift/config.yaml` (see [examples/config.yaml](./examples/config.yaml)) —
+Config lives in `~/.nightshift/config.yaml` (see [examples/config.yaml](./examples/config.yaml)) -
 one central file with global defaults plus a per-repo entry (each repo's own
-`check`). Slices are `.slices/*.md` files *or* GitHub issues.
+`check`). v2 works from GitHub issues; `.slices/*.md` files still work for basic runs.
+
+## What happens when you hit your usage limit
+
+When a Claude run returns a usage-limit error, Nightshift does not count it as a
+failure. The daemon pauses (`paused_limit`, with the reset time), keeps the slice's
+worktree and session, and starts nothing new. At the reset time it resumes the same
+session where it stopped and emits `resumed`. If the error has no reset time, it
+checks again every 15 minutes. You do not need to do anything.
 
 ## Install
 

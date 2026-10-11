@@ -1,33 +1,48 @@
-# Example Nightshift config — copy to ~/.nightshift/config.yaml and edit.
+# Example Nightshift config - copy to ~/.nightshift/config.yaml and edit.
 # One central file: global defaults + a per-repo entry for each managed repo.
 # `check` is ALWAYS per-repo (the verification gate). Secrets go in
-# ~/.nightshift/secrets.env and are referenced as ${VAR} — never commit them.
+# ~/.nightshift/secrets.env and are referenced as ${VAR} - never commit them.
 
 defaults:
   max_parallel: 5
-  executor: local-headless      # local headless Claude — no cloud
+  executor: local-headless      # local headless Claude - no cloud
   permissions:
     mode: auto                  # auto | ask
     denylist: ["force-push main", "sudo", "rm -rf outside worktree"]
   notifier: { type: none }      # none | slack | teams (optional)
 
 repos:
-  # A local, offline repo (slices live in <path>/.slices/*.md)
-  my-app:
-    path: ~/code/my-app
-    source: local-md
-    check: "pytest && ruff check ."
-    base_branch: main
-    pr: { enabled: false }            # commit straight to the branch
-    external_review: { required: false, provider: github-pr }
-    tracker: { type: none }
-
-  # A GitHub-driven repo (slices are issues; PRs close them)
+  # A GitHub-driven repo (v2): slices are issues filed with `nsh issue new`
   other-app:
     path: ~/code/other-app
     source: github-issues
     check: "make test"
     base_branch: main
-    babysit: true                 # default for github-issues: PRs wait for the driving agent
-    pr: { enabled: true, automerge: true }   # AI review always runs first
+    # Run in every fresh worktree (and after each merge, as `sync`). `nsh init`
+    # detects it from the lockfile: npm ci | pnpm install --frozen-lockfile | uv sync --frozen
+    install: "npm ci"
+    # Append-only files (barrels, route tables). They merge with git's union driver,
+    # so parallel slices that each add a line do not conflict.
+    registries: ["src/index.ts", "src/kit/index.ts"]
+    # Model per role. Roles: S, M, L (build, by issue size), review, resolve (conflicts).
+    # Anything not listed uses the defaults (Sonnet for S, review, resolve; else the CLI's own).
+    models:
+      M: opus
+      L: opus
+    effort: medium              # low | medium | high | xhigh | max
+    # Run the check on clean `main` before starting slices. If it is red the daemon
+    # stops with a `main_red` event instead of burning attempts. On by default.
+    main_gate: true
+    # Issues labelled `review` wait for the driving agent; others merge themselves.
+    babysit: true               # default for github-issues
+    pr: { enabled: true }
     external_review: { required: false, provider: github-pr }
+    tracker: { type: none }
+
+  # A local, offline repo (basic: slices live in <path>/.slices/*.md, no PR flow)
+  my-app:
+    path: ~/code/my-app
+    source: local-md
+    check: "pytest && ruff check ."
+    base_branch: main
+    pr: { enabled: false }      # commit straight to the branch

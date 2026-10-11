@@ -276,3 +276,47 @@ the check's output, so the agent has to rediscover what failed.
 - The worktree-per-slice model and one-commit-per-slice made babysit review easy.
 - Babysit caught every real integration bug before it reached `main`. Rendering
   the output was essential: two of the bugs passed all tests.
+
+## Status after v2 (2026-10-11)
+
+Each note was checked against the code on branch `v2-phase5`.
+
+### Addressed
+
+| # | How |
+|---|---|
+| 1, 3 | Worker pool: a freed slot takes the next ready slice; new issues are seen on the next poll. |
+| 2 | Ready slices are started by transitive-dependant count (critical path first). |
+| 4 | Touches overlap is a path-prefix comparison; `registries` in config marks append-only files. |
+| 5 | Events go to `events.jsonl`; `nsh wait` blocks on them. (The "waiting too long" reminder is not built, see open.) |
+| 7, 24 | Registry files get `merge=union` (git's line-level union driver) in each worktree. Not yet seen to fix the whole-file duplication in #24; watch for it. |
+| 8 | `nsh pr merge` waits out `UNKNOWN` mergeability before merging. |
+| 12 | `npm ci` / `pnpm` / `uv sync` run per worktree. `symlink_dirs` is empty unless set. |
+| 13 | Worktree teardown kills processes holding the folder and retries. |
+| 15 | `main_gate` runs the check on clean `main` first; red means `main_red`, no attempts burned. |
+| 16 | Content gate: changed text files must be UTF-8 with no conflict markers. |
+| 17 | Config is reloaded every tick. |
+| 18 | `nsh pause`, `nsh unpause`, `nsh stop` (exits after running slices finish). |
+| 19 | `nsh status [--json]`. |
+| 20 | `nightshift-slice` asks "code or only concept?" and files contract issues first. |
+| 21 | `## Touches` (scheduler) is separate from agent-facing sections. |
+| 22 | Nightshift rebases its own open PRs when `main` moves. |
+| 23 | Contracts-first rule and the `## Contract` section (Owns / Uses) in the issue template and slicer skill. |
+| 27 | A supervisor restarts the daemon; it logs why slices are not runnable and logs every exit. |
+| 29 | Usage limits are detected; the daemon pauses until the reset and the slice is not charged an attempt. |
+| 30 | Prompts are per size; a red check resumes the session with the trimmed failing output. |
+
+### Partly addressed (the rest is open)
+
+- **#6** Contracts-first slicing is in. Still open: a "sibling contract" in each prompt, and an integration check that merges all open PRs into a scratch branch.
+- **#9** `nsh pr checkout`, `merge` and `comment` exist. Open: `combine` and `push-fix`.
+- **#10** `nsh pr comment` records what was verified. Open: attaching screenshots.
+- **#11** `sync` defaults to `npm ci`. Open: warning when the main checkout is dirty after sync.
+- **#25** The slicer rule exists. Open: filing follow-ups for each consumer of a new contract, or a check that consumers honour it.
+- **#26** The rule is in the slicer skill. Open: an `AGENTS.md` template that carries it.
+- **#28** Touches is read only from list items and stops at a blank line. Open: warning when two issues share every hint.
+- **#5** Open: a reminder when a PR waits longer than N minutes, and wmux `report-agent` forwarding.
+
+### Open
+
+- **#14** `nsh init` does not generate a worktree-safe check for Python repos (editable installs still test `main`).

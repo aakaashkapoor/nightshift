@@ -1,5 +1,10 @@
 # Nightshift — Design Spec
 
+> **v2 (2026-10-11) supersedes parts of this spec; see
+> [`docs/superpowers/specs/2026-10-11-nightshift-v2-design.md`](docs/superpowers/specs/2026-10-11-nightshift-v2-design.md).**
+> Where the two disagree (§3 slice format, §4 sources, §5 scheduling, §6 lifecycle,
+> §9 review), v2 wins. Those sections below are updated; the rest is unchanged.
+
 > **Working title: `Nightshift`** (CLI `nsh` / `nightshift`). Name may be swapped
 > before launch (candidate fallbacks: *Nightshifter*, *Farrier*, *Slipway*) — a
 > find-replace, not a design change. See [Naming](#naming).
@@ -94,86 +99,89 @@ invariant wins.
 
 ## 3. The Slice (standard format)
 
-One standard format regardless of source. Emitted by `nightshift-slice` (or the
-user's own grill-me, as long as it emits this shape). A **low-key, no-code
-natural-language spec** — intent + acceptance, no implementation code.
+A slice is a GitHub issue written to the **v2 issue template**. `nsh issue new`
+produces it (linted before it is filed) and the `nightshift-slice` skill drives that
+command. Full rationale: the v2 design doc, "The issue template".
 
 ```markdown
----
-id: slice-003
-title: <one line>
-status: ready            # ready | in-progress | done | blocked
-depends_on: [slice-001]  # ids or #issue-numbers; empty = independent (a DAG root)
-attempts: 0              # incremented by the daemon; meaningful to humans
-jira: PROJ-142           # optional tracker link
----
+## Size
+S | M | L                 # missing = M
+
 ## Goal
-<what & why, in plain language>
+## Decisions              # names, paths, values already chosen
+## Contract               # Owns: ...   Uses: ...
+## Out of scope
+## Acceptance             # each item has a command or observable result
+## Touches                # existing files it will change (directories allowed)
+## Subtasks               # L only
 
-## Acceptance criteria
-- [ ] ...
-- [ ] ...
-
-## Scope hints
-<files/dirs likely involved — advisory only, not binding, used for the
- parallel-safety overlap check>
+Depends-on: #N
 ```
 
-- **`check` is NOT in the slice** — it's a per-repo setting (see §8). One repo,
-  one check, applied to every slice in that repo.
-- `status` transitions are **written back into the slice** by the daemon
-  (`ready → in-progress → done | blocked`).
+- Labels: `nightshift:ready`, plus optional `review` (wait for babysit instead of
+  auto-merging) and `visual` (a hint for babysit).
+- The linter requires Goal and Acceptance (and Subtasks for size L). A failing issue
+  gets `nightshift:needs-detail` and does not run.
+- **`check` is NOT in the slice**: it is a per-repo setting (see §8).
+- Shared instructions live in the target repo's `AGENTS.md`, not in each issue.
 
 ---
 
-## 4. Source Adapters (`local-md` / `github-issues`)
+## 4. Source Adapters
 
-Two interchangeable **primary, authoritative** sources. Pick one per repo. The
-daemon reads *and writes* status to whichever is configured.
+**GitHub Issues only, for now.** Babysit, the `review` label and the PR flow are
+GitHub-shaped. `local-md` still works for basic runs (`.slices/*.md`, offline) but
+has no v2 parity: no `review` label, no PR flow, no `nsh issue`.
 
-| | `local-md` (default / showcase) | `github-issues` |
+| | `github-issues` (v2) | `local-md` (basic) |
 |---|---|---|
-| Storage | `.slices/*.md` in the repo | GitHub Issues |
-| Ready signal | `status: ready` frontmatter | `ready` label |
-| State writeback | rewrite frontmatter | flip issue state/labels |
-| Detection | filesystem watch (instant) | poll GitHub API (~30s) |
-| Requires network | No — fully offline | Yes (`gh` auth) |
-
-- **Default & showcased = `local-md`** so anyone can clone and run fully offline.
-- **The author's own setup = `github-issues`** (the visible GitHub story:
-  issue → PR → closed → pushed).
-- Neither is a second-class mirror. Same daemon, one config line different.
+| Storage | GitHub Issues | `.slices/*.md` in the repo |
+| Ready signal | `nightshift:ready` label | `status: ready` frontmatter |
+| Detection | poll `gh` | filesystem |
 
 ---
 
 ## 5. Dependencies & Scheduling
 
-- **Explicit `depends_on` is the single source of truth** for the parallel/serial
-  graph. `nightshift-slice` (or grill-me) declares dependencies **at slice time**,
-  when it already holds the whole mental model. The daemon builds a **DAG**.
-- **Roots (no deps) run in parallel**, up to `max_parallel: 5`.
-- **A child never starts until its parent has *merged***, then it branches off the
-  fresh `main` — so dependents rarely conflict by construction.
-- **Cheap safety net:** before launching two "independent" roots in parallel, the
-  daemon does a static **scope-hint overlap check**; if two roots collide on the
-  same files, it **warns and serializes them anyway** (belt-and-suspenders against
-  the worst conflict case).
+- `Depends-on: #N` in the issue body; a slice starts only after its dependencies
+  have **merged**, branching off the fresh `main`.
+- **Worker pool, not batches.** Up to `max_parallel` slices run at once. A slot that
+  frees up takes the best ready slice immediately: the one with the most transitive
+  dependants (**critical path first**).
+- **Touches lock.** Two slices whose `## Touches` overlap (path-prefix comparison)
+  never run at the same time.
+- The daemon logs why each ready slice is not runnable whenever that set changes.
 
 ---
 
 ## 6. Per-Slice Lifecycle: Work → Ship
 
-Two phases. The second is a loop.
+Summary of the v2 flow (details: v2 design doc, Steps 1-5).
 
-### Phase 1 — Work
+- **Size decides the workflow.** S: do it directly, no plan. M: write
+  `.nightshift/plan.md`, then implement. L: subagent-driven, using the issue's
+  Subtasks. Models are per-repo config (`models:`); by default S, review and the
+  resolver use Sonnet and M/L use the CLI's own default.
+- **`result.json`.** The build agent ends by writing `.nightshift/result.json`
+  (`done`, `question` or `needs_files`), schema-validated with one repair round.
+- **Deterministic gates before review:** the check passes (on red, the same session
+  resumes with the trimmed failing output), no conflict markers, text files are
+  UTF-8, and the diff changes no existing file outside Touches.
+- **Usage limit.** On a usage-limit error the daemon pauses until the reset, keeps
+  the worktree and session, and resumes without charging an attempt.
+- **Conflict ladder** (when rebasing onto `main`): union merge for registry files,
+  regenerate lockfiles, then a Sonnet resolver whose retry escalates to the
+  default model. Conflicts are counted per file in `nsh status`.
+
+### Work
 - Agent (local headless Claude) implements the slice against its no-code spec in
   its **own worktree**.
 - Leaves **breadcrumbs for cheap resumption** (see §7): WIP commits (git history
   = "what's been done") + a short progress note (`.nightshift/progress.md` in the
   worktree = "what's left / why blocked", a live checklist vs acceptance criteria).
 
-### Phase 2 — Ship (a loop)
-Runs through the **serial merge train** — only one slice in Ship at a time.
+### Ship (older description; see §9 for the PR flow)
+Non-PR repos still run through the **serial merge train**.
 
 1. Commit the work.
 2. **Rebase onto current `main`** (which may have moved while working).
@@ -294,15 +302,14 @@ Two independent things (previously conflated):
 - **Provider = GitHub Pull Requests at launch**, behind a **`Reviewer` interface**
   so the community can add others later (GitLab MRs, Gerrit, Microsoft's internal
   review system, …).
-- **Babysit (`babysit: true`, default for `github-issues` repos)** is the
-  agent-driven form of external review. After `check` + AI review, Ship rebases,
-  re-checks, opens a PR labelled `nightshift:babysit` (automerge off), marks the
-  slice `in-review` and moves on. The agent driving Nightshift reviews it with the
-  `nightshift-babysit` skill: it verifies whatever the change needs, fixes small
-  problems on the branch, files follow-ups as new issues, and merges. Each tick the
-  daemon pulls `base_branch` and settles `in-review` slices (merged → `done`,
-  closed → `blocked`). Dependants wait for the merge. `babysit: false` keeps the
-  local merge-train. Design: `docs/superpowers/specs/2026-10-08-babysit-design.md`.
+- **PRs and the `review` label (v2).** On `github-issues` repos Ship rebases,
+  re-checks and opens a PR. The issue's **`review` label decides what happens next**,
+  and is read at ship time: without it the PR **merges itself**; with it the PR stays
+  open, the slice is `in-review` and a `review_ready` event wakes the driving agent.
+  That agent follows the `nightshift-babysit` skill (`nsh pr checkout | comment |
+  merge`). Nightshift rebases its own open PRs whenever `main` moves. If an
+  auto-merge fails, the PR also falls back to babysit. `babysit: false` keeps the
+  local merge train.
 
 ---
 
@@ -315,11 +322,11 @@ agents; invoke manually only when the user explicitly asks."*
 
 | Skill | Role |
 |---|---|
-| `nightshift-slice` | grill-me-derived: interviews you, designs a batch of slices, asks *"Happy with these?"*, on YES writes them as `status: ready`. |
+| `nightshift-slice` | grill-me-derived: interviews you, designs sized, contracts-first slices, asks *"Happy with these?"*, on YES files them with `nsh issue new`. |
 | `nightshift-review` | The always-on AI reviewer (Ship step). |
 | `nightshift-resolve` | The merge-conflict / post-rebase resolver agent. |
 | `nightshift-setup` | The concierge (re-runnable onboarding + reconfiguration). |
-| `nightshift-babysit` | Used by the **driving agent** (not the daemon): reviews, fixes and merges babysit PRs. On by default for babysit repos. |
+| `nightshift-babysit` | Used by the **driving agent** (not the daemon): drives the daemon from `nsh wait` events; reviews, fixes and merges the PRs labelled `review`. |
 
 > The author's personal `grill-me` stays untouched. A user with their own slicing
 > skill keeps it — it just needs to emit the §3 slice format.

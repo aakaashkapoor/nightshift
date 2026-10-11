@@ -103,3 +103,34 @@ def test_set_status_in_review_swaps_labels() -> None:
     edit = gh.calls[0]
     assert edit[edit.index("--add-label") + 1] == "nightshift:in-review"
     assert "nightshift:in-progress" in edit[edit.index("--remove-label") + 1]
+
+
+def test_append_to_section_rewrites_the_issue_body() -> None:
+    class Gh(FakeGh):
+        def __call__(self, *args):
+            out = super().__call__(*args)
+            if args[:2] == ("issue", "view"):
+                return json.dumps({"body": "## Goal\ng\n\n## Touches\n- a.py\n"})
+            return out
+
+    gh = Gh(ISSUES)
+    GitHubIssuesSource(".", gh=gh).append_to_section("issue-7", "Touches", "- b.py")
+    assert gh.calls[0] == ("issue", "view", "7", "--json", "body")
+    assert gh.calls[1] == (
+        "issue",
+        "edit",
+        "7",
+        "--body",
+        "## Goal\ng\n\n## Touches\n- a.py\n- b.py\n",
+    )
+
+
+def test_append_to_section_tolerates_an_empty_body() -> None:
+    class Gh(FakeGh):
+        def __call__(self, *args):
+            super().__call__(*args)
+            return json.dumps({"body": None}) if args[:2] == ("issue", "view") else ""
+
+    gh = Gh(ISSUES)
+    GitHubIssuesSource(".", gh=gh).append_to_section("issue-7", "Answers", "- yes")
+    assert gh.calls[1][-1] == "\n## Answers\n- yes\n"

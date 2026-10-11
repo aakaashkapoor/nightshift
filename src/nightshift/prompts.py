@@ -41,6 +41,17 @@ REPAIR = """.nightshift/result.json is missing or invalid: {error}
 Write it now (valid JSON, the schema from your instructions). Do nothing else."""
 
 
+FILES_PROMPT = (
+    "You may now also modify: {files}. Continue the task from where you stopped, "
+    "then update .nightshift/result.json."
+)
+
+ANSWER_PROMPT = (
+    "The owner answered your question:\n\n{answer}\n\n"
+    "Continue the task from where you stopped, then update .nightshift/result.json."
+)
+
+
 def build_prompt(sl) -> str:
     touches = sorted(sl.touches())
     files = ", ".join(touches) if touches else "any (the issue lists no Touches)"

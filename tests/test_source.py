@@ -67,3 +67,21 @@ def test_build_source_selects_adapter_from_config(tmp_path) -> None:
     gh = build_source(RepoConfig(name="a", path=tmp_path, check="x", source="github-issues"))
     assert isinstance(local, LocalMdSource)
     assert isinstance(gh, GitHubIssuesSource)
+
+
+def test_local_append_to_section(tmp_path) -> None:
+    (tmp_path / ".slices").mkdir()
+    (tmp_path / ".slices" / "s1.md").write_text(
+        "---\nid: s1\ntitle: t\nstatus: ready\n---\n## Goal\ng\n", encoding="utf-8"
+    )
+    src = LocalMdSource(tmp_path)
+    src.append_to_section("s1", "Answers", "- use sqlite")
+    assert src.get("s1").section("Answers") == "- use sqlite"
+    assert src.get("s1").status == "ready"
+
+
+def test_local_append_to_section_unknown_slice(tmp_path) -> None:
+    import pytest
+
+    with pytest.raises(KeyError):
+        LocalMdSource(tmp_path).append_to_section("nope", "Answers", "- x")

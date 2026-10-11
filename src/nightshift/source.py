@@ -11,7 +11,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Protocol
 
-from .slice import Slice
+from .slice import Slice, append_to_section
 
 READY = "ready"
 
@@ -25,6 +25,7 @@ class Source(Protocol):
     def set_status(self, slice_id: str, status: str) -> None: ...
     def set_blocked(self, slice_id: str, reason: str) -> None: ...
     def set_needs_detail(self, slice_id: str, message: str) -> None: ...
+    def append_to_section(self, slice_id: str, heading: str, line: str) -> None: ...
 
 
 class LocalMdSource:
@@ -82,6 +83,13 @@ class LocalMdSource:
         sl.status = "needs-detail"
         if "## Needs detail" not in sl.body:
             sl.body = sl.body.rstrip() + f"\n\n## Needs detail\n{message}\n"
+        self.save(sl)
+
+    def append_to_section(self, slice_id: str, heading: str, line: str) -> None:
+        sl = self.get(slice_id)
+        if sl is None:
+            raise KeyError(f"no slice {slice_id!r} in {self.root}")
+        sl.body = append_to_section(sl.body, heading, line)
         self.save(sl)
 
 

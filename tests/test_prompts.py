@@ -56,3 +56,12 @@ def test_check_failed_prompt_has_command_and_output() -> None:
 
 def test_repair_prompt_has_error() -> None:
     assert "file not found" in repair_prompt("file not found")
+
+
+def test_files_and_answer_prompts() -> None:
+    from nightshift.prompts import ANSWER_PROMPT, FILES_PROMPT
+
+    assert "a.py, b.py" in FILES_PROMPT.format(files="a.py, b.py")
+    assert "result.json" in FILES_PROMPT
+    text = ANSWER_PROMPT.format(answer="use sqlite")
+    assert "use sqlite" in text and "result.json" in text

@@ -99,3 +99,38 @@ def test_scope_hints_ignores_prose_and_notes() -> None:
 def test_scope_hints_empty_when_absent() -> None:
     text = "---\nid: x\ntitle: x\nstatus: ready\n---\n## Goal\ng\n"
     assert Slice.parse(text).scope_hints() == set()
+
+
+# ---- append_to_section ----
+
+
+def test_append_to_section_adds_to_existing_section() -> None:
+    from nightshift.slice import append_to_section
+
+    body = "## Goal\ng\n\n## Touches\n- a.py\n\n\n## Notes\nn\n"
+    out = append_to_section(body, "Touches", "- b.py")
+    assert out == "## Goal\ng\n\n## Touches\n- a.py\n- b.py\n\n\n## Notes\nn\n"
+
+
+def test_append_to_section_is_case_insensitive_and_handles_last_section() -> None:
+    from nightshift.slice import append_to_section
+
+    assert append_to_section("## touches\n- a.py\n", "Touches", "- b.py") == (
+        "## touches\n- a.py\n- b.py\n"
+    )
+
+
+def test_append_to_section_empty_section_goes_right_under_the_heading() -> None:
+    from nightshift.slice import append_to_section
+
+    assert append_to_section("## Touches\n\n## Notes\nn\n", "Touches", "- b.py") == (
+        "## Touches\n- b.py\n\n## Notes\nn\n"
+    )
+
+
+def test_append_to_section_creates_missing_section_at_the_end() -> None:
+    from nightshift.slice import append_to_section
+
+    assert append_to_section("## Goal\ng\n\n", "Answers", "- yes") == (
+        "## Goal\ng\n\n## Answers\n- yes\n"
+    )

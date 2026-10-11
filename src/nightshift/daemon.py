@@ -35,6 +35,7 @@ from .pipeline import (
     sync_base,
 )
 from .pr import BABYSIT_LABEL, GitHubPR, open_pr_for_slice
+from .prompts import FILES_PROMPT
 from .resolver import Resolver
 from .review import AgentReviewer
 from .runtime import Runtime
@@ -49,6 +50,8 @@ DONE = "done"
 BLOCKED = "blocked"
 IN_REVIEW = "in-review"
 LIMITED = "limited"
+QUESTION = "question"
+NEEDS_FILES = "needs_files"
 
 log = logging.getLogger("nightshift")
 _LOG_FMT = logging.Formatter("%(asctime)s  nightshift  %(message)s", "%H:%M:%S")
@@ -161,6 +164,7 @@ class Daemon:
                 max_attempts=self.max_attempts,
                 reviewer=self.reviewer,
                 resume_session=resume,
+                resume_prompt=entry.get("resume_prompt"),
                 result_contract=self.result_contract,
             )
         except UsageLimitReached as exc:
@@ -231,11 +235,51 @@ class Daemon:
         """Serial merge-train step for one committed branch (SPEC §6)."""
         if work.status == LIMITED:
             return self._limited(work)
+        if work.status == QUESTION:
+            return self._ask(work)
+        if work.status == NEEDS_FILES:
+            return self._request_files(work)
         try:
             return self._ship(work)
         except UsageLimitReached as exc:
             _git_ok(self.worktrees.path_for(work.slice_id), "rebase", "--abort")
             return self._limited(work, reset_session=exc.reset_session)
+
+    def _ask(self, work: SliceResult) -> SliceResult:
+        """The agent asked the owner something: park the issue until `nsh answer`."""
+        self.source.set_needs_detail(
+            work.slice_id,
+            f"Question from the agent:\n\n{work.question}\n\n"
+            f'Answer with: nsh answer {work.slice_id} "..."',
+        )
+        if self.runtime is not None:
+            self.runtime.record(
+                work.slice_id,
+                session_id=work.session_id,
+                branch=work.branch,
+                interrupted=False,
+                awaiting_answer=True,
+            )
+        self._emit("question", work.slice_id, question=work.question)
+        self._phase(work.slice_id, QUESTION, detail=work.question)
+        return work
+
+    def _request_files(self, work: SliceResult) -> SliceResult:
+        """The agent needs more files: add them to Touches and requeue to resume."""
+        for path in work.needs_files:
+            self.source.append_to_section(work.slice_id, "Touches", f"- {path}")
+        self.source.set_status(work.slice_id, "ready")
+        if self.runtime is not None:
+            self.runtime.record(
+                work.slice_id,
+                session_id=work.session_id,
+                branch=work.branch,
+                interrupted=True,
+                resume_prompt=FILES_PROMPT.format(files=", ".join(work.needs_files)),
+            )
+        self._emit("needs_files", work.slice_id, files=work.needs_files)
+        self._phase(work.slice_id, "queued", detail=work.detail)
+        return work
 
     def _ship(self, work: SliceResult) -> SliceResult:
         if work.status != DONE:  # Work itself failed -> nothing to integrate
@@ -482,6 +526,10 @@ class Daemon:
                 log.info("%s in review: %s", r.slice_id, r.detail)
             elif r.status == LIMITED:
                 log.warning("%s paused on the usage limit", r.slice_id)
+            elif r.status == QUESTION:
+                log.warning("%s has a question: %s", r.slice_id, r.detail)
+            elif r.status == NEEDS_FILES:
+                log.info("%s needs more files; requeued (%s)", r.slice_id, r.detail)
             else:
                 log.warning("%s BLOCKED — %s", r.slice_id, r.detail)
 
@@ -489,6 +537,8 @@ class Daemon:
         if self.runtime is None:
             return
         for r in results:
+            if r.status in (QUESTION, NEEDS_FILES):
+                continue  # recorded in _integrate, with the prompt to resume with
             if r.status in (DONE, IN_REVIEW):
                 self.runtime.forget(r.slice_id)
             else:
@@ -498,6 +548,7 @@ class Daemon:
                     branch=r.branch,
                     interrupted=r.status == LIMITED,
                 )
+                self.runtime.clear(r.slice_id, "resume_prompt")
 
     def _log_waiting(self, waiting: dict[str, str]) -> None:
         if waiting == self._waiting:

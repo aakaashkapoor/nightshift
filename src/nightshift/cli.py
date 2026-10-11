@@ -172,6 +172,23 @@ def wait(
         raise typer.Exit(code=2)
 
 
+@app.command()
+def answer(
+    slice: str = typer.Argument(..., help="Slice id the agent asked about"),
+    text: str = typer.Argument(..., help="Your answer"),
+    repo: Path = typer.Option(Path("."), "--repo", help="Target repo (default: current dir)"),
+    config: Path | None = typer.Option(None, "--config", help="Config file"),
+) -> None:
+    """Answer an agent's question; the slice resumes its session on the next poll."""
+    from nightshift import wait as wait_mod
+
+    try:
+        typer.echo(wait_mod.run_answer_cli(repo, slice, text, config_path=config))
+    except LookupError as exc:
+        typer.echo(str(exc))
+        raise typer.Exit(code=1) from exc
+
+
 def _control(action: str, repo: Path, config: Path | None) -> None:
     from nightshift import wait as wait_mod
 

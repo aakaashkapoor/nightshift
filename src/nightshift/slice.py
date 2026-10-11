@@ -39,6 +39,22 @@ def _split_frontmatter(text: str) -> tuple[Any, str]:
     raise ValueError("slice frontmatter is not terminated (missing closing '---')")
 
 
+def append_to_section(body: str, heading: str, line: str) -> str:
+    """Add ``line`` at the end of '## <heading>', creating the section if missing."""
+    lines = body.rstrip("\n").splitlines()
+    target = f"## {heading}".lower()
+    for i, existing in enumerate(lines):
+        if existing.strip().lower() == target:
+            end = i + 1
+            while end < len(lines) and not lines[end].strip().startswith("## "):
+                end += 1
+            while end > i + 1 and not lines[end - 1].strip():
+                end -= 1
+            lines.insert(end, line)
+            return "\n".join(lines) + "\n"
+    return "\n".join([*lines, "", f"## {heading}", line]) + "\n"
+
+
 @dataclass
 class Slice:
     """One unit of work. See SPEC §3."""

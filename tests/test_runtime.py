@@ -39,3 +39,36 @@ def test_reconcile_drops_unknown_and_missing_worktree(tmp_path) -> None:
     # b is no longer a known slice; c's worktree is gone; a survives.
     rt.reconcile(known_slice_ids={"a", "c"}, worktrees=FakeWT({"a"}))
     assert rt.get("a") and not rt.get("b") and not rt.get("c")
+
+
+def test_clear_drops_only_the_named_keys(tmp_path) -> None:
+    path = tmp_path / "runtime.json"
+    rt = Runtime(path)
+    rt.record("s", session_id="x", resume_prompt="p", interrupted=True)
+    rt.clear("s", "resume_prompt", "missing")
+    assert rt.get("s") == {"session_id": "x", "interrupted": True}
+    assert Runtime(path).get("s") == {"session_id": "x", "interrupted": True}
+
+
+def test_clear_on_unknown_slice_is_a_noop(tmp_path) -> None:
+    rt = Runtime(tmp_path / "runtime.json")
+    rt.clear("nope", "resume_prompt")
+    assert rt.get("nope") == {}
+
+
+def test_reads_see_writes_from_another_process(tmp_path) -> None:
+    path = tmp_path / "runtime.json"
+    daemon, cli = Runtime(path), Runtime(path)
+    daemon.record("s", session_id="x")
+    cli.record("s", interrupted=True, resume_prompt="answer")
+    assert daemon.get("s") == {"session_id": "x", "interrupted": True, "resume_prompt": "answer"}
+    daemon.record("s", branch="b")  # must not clobber what the CLI wrote
+    assert Runtime(path).get("s")["resume_prompt"] == "answer"
+
+
+def test_a_torn_file_keeps_the_last_good_data(tmp_path) -> None:
+    path = tmp_path / "runtime.json"
+    rt = Runtime(path)
+    rt.record("s", session_id="x")
+    path.write_text("{ not json", encoding="utf-8")
+    assert rt.get("s") == {"session_id": "x"}

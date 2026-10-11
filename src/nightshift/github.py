@@ -14,7 +14,7 @@ import subprocess
 from pathlib import Path
 
 from ._exe import GH_DIRS, which
-from .slice import Slice
+from .slice import Slice, append_to_section
 
 PREFIX = "nightshift:"
 LABELS = {
@@ -101,6 +101,13 @@ class GitHubIssuesSource:
             "issue", "edit", num, "--add-label", LABELS["needs-detail"], "--remove-label", remove
         )
         self.gh("issue", "comment", num, "--body", f"❓ Needs detail:\n\n{message}")
+
+    def append_to_section(self, slice_id: str, heading: str, line: str) -> None:
+        import json
+
+        num = _num(slice_id)
+        body = json.loads(self.gh("issue", "view", num, "--json", "body")).get("body") or ""
+        self.gh("issue", "edit", num, "--body", append_to_section(body, heading, line))
 
     # --- mapping -------------------------------------------------------------
 

@@ -11,6 +11,9 @@ from .config import Config
 from .control import Control
 from .events import ATTENTION, EventLog
 from .paths import repo_home
+from .prompts import ANSWER_PROMPT
+from .runtime import Runtime
+from .source import build_source
 from .state import StateStore, render_status
 
 
@@ -64,6 +67,25 @@ def run_status_cli(repo, *, config_path=None, as_json=False, home_root=None, now
     if as_json:
         return json.dumps(snapshot, indent=2)
     return render_status(snapshot, time.time() if now is None else now)
+
+
+def run_answer_cli(repo, slice_id: str, text: str, *, config_path=None, home_root=None) -> str:
+    """Record the owner's answer in the issue and queue the slice to resume with it."""
+    repo_cfg = Config.load(config_path).repo(str(repo))
+    source = build_source(repo_cfg)
+    if source.get(slice_id) is None:
+        raise LookupError(f"no slice {slice_id!r}")
+    home = repo_home(repo_cfg.name, home_root)
+    source.append_to_section(slice_id, "Answers", f"- {text}")
+    source.set_status(slice_id, "ready")
+    Runtime(home / "runtime.json").record(
+        slice_id,
+        interrupted=True,
+        awaiting_answer=False,
+        resume_prompt=ANSWER_PROMPT.format(answer=text),
+    )
+    EventLog(home / "events.jsonl").emit("answered", slice_id, answer=text)
+    return f"answered {slice_id}; it will resume on the next poll"
 
 
 _CONTROL = {

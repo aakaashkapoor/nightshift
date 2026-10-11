@@ -84,6 +84,9 @@ def render_status(snapshot: dict, now: float) -> str:
         head = f"daemon: {status} (pid {daemon.get('pid', '?')}, updated {_ago(now - daemon.get('updated', now))} ago)"
     if daemon.get("main") == "red":
         head += " · main RED"
+    conflicts = daemon.get("conflicts")
+    if conflicts:
+        head += "\nconflicts: " + ", ".join(f"{f} x{n}" for f, n in conflicts.items())
     slices = snapshot.get("slices") or {}
     if not slices:
         return f"{head}\nno slices in flight"

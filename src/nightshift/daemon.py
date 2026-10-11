@@ -18,6 +18,7 @@ from pathlib import Path
 
 from .check import run_check
 from .config import Config, RepoConfig
+from .conflicts import ConflictLog
 from .control import Control
 from .events import EventLog
 from .executor import Executor
@@ -91,6 +92,7 @@ class Daemon:
         pr=None,
         events: EventLog | None = None,
         state: StateStore | None = None,
+        conflicts: ConflictLog | None = None,
         clock: Callable[[], float] = time.time,
         reset_lookup: Callable[[str | None], float | None] = reset_time,
         control: Control | None = None,
@@ -115,6 +117,7 @@ class Daemon:
         self.pr = pr
         self.events = events
         self.state = state
+        self.conflicts = conflicts
         self.clock = clock
         self.reset_lookup = reset_lookup
         self.paused_until: float | None = None
@@ -145,6 +148,16 @@ class Daemon:
     def _drop(self, slice_id: str) -> None:
         if self.state is not None:
             self.state.drop_slice(slice_id)
+
+    def _conflict_reporter(self, slice_id: str) -> Callable[[list[str], str], None]:
+        def report(files: list[str], how: str) -> None:
+            self._emit("conflict", slice_id, files=files, how=how)
+            if self.conflicts is not None:
+                self.conflicts.record(files, how)
+                top = sorted(self.conflicts.counts().items(), key=lambda kv: (-kv[1], kv[0]))[:5]
+                self._daemon_state(conflicts=dict(top))
+
+        return report
 
     def _daemon_state(self, **fields) -> None:
         if self.state is not None:
@@ -361,6 +374,7 @@ class Daemon:
             resolve_attempts=self.resolve_attempts,
             push=self.repo_cfg.push,
             sync_cmd=self.repo_cfg.sync,
+            on_conflict=self._conflict_reporter(work.slice_id),
         )
         if result.merged:
             self._green = result.commit  # that commit was checked before it merged
@@ -387,6 +401,7 @@ class Daemon:
             check_cmd=self.repo_cfg.check,
             resolver=self.resolver,
             resolve_attempts=self.resolve_attempts,
+            on_conflict=self._conflict_reporter(work.slice_id),
         )
         if not prep.ok:
             return self._block(work, prep.detail)
@@ -764,6 +779,7 @@ def run_daemon_cli(
         runtime=Runtime(home / "runtime.json"),
         events=EventLog(home / "events.jsonl"),
         state=StateStore(home / "state.json"),
+        conflicts=ConflictLog(home / "conflicts.json"),
         control=Control(home / "control.json"),
         reload=lambda: Config.load(config_path).repo(str(repo)),
         exit_event="child_exit" if child else "daemon_exit",

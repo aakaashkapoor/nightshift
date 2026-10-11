@@ -509,3 +509,75 @@ def test_run_daemon_cli_child_wires_supervised_options(tmp_path, monkeypatch) ->
     assert seen["interval"] == 5
     assert seen["control"].path == tmp_path / "ns" / "repos" / "r" / "control.json"
     assert seen["reload"]().name == "r"
+
+
+# --- conflict ladder wiring -----------------------------------------------------
+
+
+def test_daemon_records_conflicts_events_and_state(repo, tmp_path) -> None:
+    from nightshift.conflicts import ConflictLog
+    from nightshift.events import EventLog
+    from nightshift.state import StateStore
+
+    _write_slice(repo, "slice-001")
+    _write_slice(repo, "slice-002")
+    d = _daemon(repo, tmp_path, ConflictAgent(), max_parallel=5, resolver=StripResolver())
+    d.conflicts = ConflictLog(tmp_path / "home" / "conflicts.json")
+    d.events = EventLog(tmp_path / "home" / "events.jsonl")
+    d.state = StateStore(tmp_path / "home" / "state.json")
+
+    d.tick()
+
+    assert d.conflicts.counts() == {"README.md": 1}
+    events = [json.loads(line) for line in d.events.path.read_text(encoding="utf-8").splitlines()]
+    conflict = next(e for e in events if e["kind"] == "conflict")
+    assert conflict["slice"] == "slice-002"
+    assert conflict["files"] == ["README.md"] and conflict["how"] == "agent"
+    assert d.state.snapshot()["daemon"]["conflicts"] == {"README.md": 1}
+
+
+def test_daemon_conflict_without_a_log_still_emits(repo, tmp_path) -> None:
+    _write_slice(repo, "slice-001")
+    _write_slice(repo, "slice-002")
+    d = _daemon(repo, tmp_path, ConflictAgent(), max_parallel=5, resolver=StripResolver())
+    assert d.conflicts is None
+    d.tick()  # must not raise
+
+
+def test_babysit_path_reports_conflicts(repo, tmp_path, monkeypatch) -> None:
+    import nightshift.daemon as d_mod
+    from nightshift.conflicts import ConflictLog
+    from nightshift.pipeline import PrepResult
+
+    def fake_prepare(**kw):
+        kw["on_conflict"](["x.ts"], "agent")
+        return PrepResult(True, "ready")
+
+    monkeypatch.setattr(d_mod, "prepare_branch", fake_prepare)
+    _write_slice(repo, "slice-001")
+    d = _babysit_daemon(repo, FakePR(), tmp_path)
+    d.conflicts = ConflictLog(tmp_path / "c.json")
+    d.tick()
+    assert d.conflicts.counts() == {"x.ts": 1}
+
+
+def test_run_daemon_cli_builds_a_conflict_log(tmp_path, monkeypatch) -> None:
+    import nightshift.daemon as dmod
+
+    cfg = tmp_path / "c.yaml"
+    cfg.write_text(
+        f"repos:\n  r:\n    path: {tmp_path.as_posix()}\n    check: echo ok\n",
+        encoding="utf-8",
+    )
+    seen = {}
+
+    class FakeDaemon:
+        def __init__(self, **kw):
+            seen.update(kw)
+
+        def run_forever(self, interval):
+            pass
+
+    monkeypatch.setattr(dmod, "Daemon", FakeDaemon)
+    run_daemon_cli("r", config_path=cfg, interval=1, home_root=tmp_path / "home")
+    assert seen["conflicts"].path == tmp_path / "home" / "repos" / "r" / "conflicts.json"

@@ -13,11 +13,13 @@ worktree and a single ``git commit`` produces exactly one clean commit (SPEC §0
 from __future__ import annotations
 
 import subprocess
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from .check import run_check
 from .config import Config
+from .conflicts import conflicted_files, regenerate_lockfiles
 from .executor import Executor
 from .gitutil import LOCK as _GIT_LOCK
 from .limits import UsageLimitReached
@@ -132,20 +134,20 @@ def _has_conflict_markers(cwd: Path | str) -> bool:
 
 
 def _resolve_conflicted_rebase(worktree_path, resolver, attempts: int) -> bool:
-    """Let the resolver agent edit the worktree, then continue the rebase.
+    """Let the resolver agent edit the worktree until no conflict markers remain.
 
-    Returns True once the rebase completes cleanly (no leftover conflict markers).
+    Returns True once the stop is resolved and staged (the caller continues the rebase).
     """
     for _ in range(attempts):
         resolver(worktree_path)
         _git(worktree_path, "add", "-A")
-        if _has_conflict_markers(worktree_path):
-            continue  # markers remain -> let the resolver try again
-        if _git_ok(
-            worktree_path, "-c", "core.editor=true", "rebase", "--continue"
-        ):  # pragma: no branch
+        if not _has_conflict_markers(worktree_path):
             return True
     return False
+
+
+def _continue_rebase(worktree_path) -> bool:
+    return _git_ok(worktree_path, "-c", "core.editor=true", "rebase", "--continue")
 
 
 def prepare_branch(
@@ -155,19 +157,40 @@ def prepare_branch(
     check_cmd: str,
     resolver=None,
     resolve_attempts: int = 2,
+    on_conflict: Callable[[list[str], str], None] | None = None,
 ) -> PrepResult:
     """Rebase a slice branch onto base and re-run the check, without merging.
 
     The first half of the merge-train step; babysit's Ship path stops here and
-    opens a PR instead of merging (SPEC §9).
+    opens a PR instead of merging (SPEC §9). Every time the rebase stops, lockfiles
+    are regenerated with plain git first; the resolver agent only sees what's left.
+    ``on_conflict(files, how)`` is told what was fixed and how.
     """
-    if not _git_ok(worktree_path, "rebase", base_branch):
-        resolved = resolver is not None and _resolve_conflicted_rebase(
-            worktree_path, resolver, resolve_attempts
-        )
-        if not resolved:
-            _git_ok(worktree_path, "rebase", "--abort")
-            return PrepResult(False, "unresolved conflict" if resolver else "rebase conflict")
+
+    def report(files: list[str], how: str) -> None:
+        if on_conflict is not None and files:
+            on_conflict(files, how)
+
+    def give_up(files: list[str], detail: str) -> PrepResult:
+        report(files, "unresolved")
+        _git_ok(worktree_path, "rebase", "--abort")
+        return PrepResult(False, detail)
+
+    rebased = _git_ok(worktree_path, "rebase", base_branch)
+    while not rebased:
+        files = conflicted_files(worktree_path)
+        fixed = regenerate_lockfiles(worktree_path, files)
+        rest = [f for f in files if f not in fixed]
+        report(fixed, "lockfile")
+        if rest:
+            if resolver is None:
+                return give_up(rest, "rebase conflict")
+            if not _resolve_conflicted_rebase(worktree_path, resolver, resolve_attempts):
+                return give_up(rest, "unresolved conflict")
+            report(rest, "agent")
+        elif not fixed:  # the rebase failed with nothing to resolve
+            return give_up([], "rebase conflict")
+        rebased = _continue_rebase(worktree_path)
     if not run_check(check_cmd, worktree_path).passed:  # pragma: no cover - post-rebase red
         return PrepResult(False, "check failed after rebase")
     return PrepResult(True, "ready")
@@ -205,6 +228,7 @@ def integrate_branch(
     resolve_attempts: int = 2,
     push: bool = False,
     sync_cmd: str | None = None,
+    on_conflict: Callable[[list[str], str], None] | None = None,
 ) -> IntegrationResult:
     """Serial merge-train step (SPEC §6): rebase onto base -> re-check -> ff-merge.
 
@@ -232,6 +256,7 @@ def integrate_branch(
         check_cmd=check_cmd,
         resolver=resolver,
         resolve_attempts=resolve_attempts,
+        on_conflict=on_conflict,
     )
     if not prep.ok:
         return IntegrationResult(False, None, prep.detail)

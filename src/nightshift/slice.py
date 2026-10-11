@@ -20,6 +20,7 @@ from typing import Any
 from ruamel.yaml import YAML
 
 _FENCE = "---"
+SIZES = ("S", "M", "L")
 
 _yaml = YAML()
 _yaml.preserve_quotes = True
@@ -103,6 +104,29 @@ class Slice:
                 if token and ("." in token or "/" in token or "\\" in token):
                     paths.add(token)
         return paths
+
+    def section(self, name: str) -> str | None:
+        """Text under '## <name>' (case-insensitive) up to the next '## ' heading.
+
+        None if the heading is absent; '' if present but empty.
+        """
+        lines = self.body.splitlines()
+        target = f"## {name}".lower()
+        for i, line in enumerate(lines):
+            if line.strip().lower() == target:
+                out = []
+                for nxt in lines[i + 1 :]:
+                    if nxt.strip().startswith("## "):
+                        break
+                    out.append(nxt)
+                return "\n".join(out).strip()
+        return None
+
+    def size(self) -> str:
+        """S, M or L from '## Size'; M when missing or unreadable."""
+        raw = (self.section("Size") or "").split()
+        token = raw[0].upper() if raw else ""
+        return token if token in SIZES else "M"
 
     def scope_hints(self) -> set[str]:
         """Old name for ``touches()``."""

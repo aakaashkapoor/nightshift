@@ -22,6 +22,7 @@ from .control import Control
 from .events import EventLog
 from .executor import Executor
 from .limits import UsageLimitReached, reset_time, resume_at
+from .lint import lint
 from .notifier import NullNotifier, build_notifier
 from .paths import repo_home
 from .pipeline import (
@@ -91,6 +92,7 @@ class Daemon:
         control: Control | None = None,
         reload: Callable[[], RepoConfig] | None = None,
         exit_event: str = "daemon_exit",
+        lint_issues: bool = False,
     ):
         self.source = source
         self.repo_cfg = repo_cfg
@@ -115,6 +117,7 @@ class Daemon:
         self.control = control
         self.reload = reload
         self.exit_event = exit_event
+        self.lint_issues = lint_issues
         self._idle: str | None = None
         self._pool: ThreadPoolExecutor | None = None
         self._running: dict[str, Future[SliceResult]] = {}  # slice id -> work, in start order
@@ -403,6 +406,8 @@ class Daemon:
             (s for s in dag.runnable() if s.id not in self._running),
             key=lambda s: (-weight[s.id], order[s.id]),
         )
+        if self.lint_issues:
+            runnable = self._lint_runnable(runnable)
         free = self.max_parallel - len(self._running)
         waiting: dict[str, str] = {}
         started: list[Slice] = []
@@ -435,6 +440,21 @@ class Daemon:
             self._phase(sl.id, "working")
             log.info("starting %s (blocks %d)", sl.id, weight[sl.id])
             self._running[sl.id] = self._executor_pool().submit(self._run_one, sl)
+
+    def _lint_runnable(self, runnable: list[Slice]) -> list[Slice]:
+        """Park issues the linter rejects as needs-detail; return the rest."""
+        clean = []
+        for sl in runnable:
+            problems = lint(sl)
+            if problems:
+                text = "\n".join(f"- {p}" for p in problems)
+                self.source.set_needs_detail(sl.id, text)
+                self._emit("needs_detail", sl.id, problems=problems)
+                self._phase(sl.id, "needs-detail", detail="; ".join(problems))
+                log.warning("%s needs detail: %s", sl.id, "; ".join(problems))
+            else:
+                clean.append(sl)
+        return clean
 
     def _settle(self, *, wait: bool) -> list[SliceResult]:
         """Ship finished work serially, in start order (the merge train)."""
@@ -619,6 +639,7 @@ def run_daemon_cli(
         control=Control(home / "control.json"),
         reload=lambda: Config.load(config_path).repo(str(repo)),
         exit_event="child_exit" if child else "daemon_exit",
+        lint_issues=True,
     )
     if once:
         return daemon.tick()

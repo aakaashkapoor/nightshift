@@ -22,6 +22,7 @@ LABELS = {
     "in-progress": f"{PREFIX}in-progress",
     "in-review": f"{PREFIX}in-review",
     "blocked": f"{PREFIX}blocked",
+    "needs-detail": f"{PREFIX}needs-detail",
 }
 _LABEL_TO_STATUS = {v: k for k, v in LABELS.items()}
 _DEPENDS_RE = re.compile(r"(?im)^depends-on:\s*(.+)$")
@@ -92,6 +93,14 @@ class GitHubIssuesSource:
         self.gh("issue", "edit", num, "--add-label", LABELS["blocked"], "--remove-label", remove)
         if reason:
             self.gh("issue", "comment", num, "--body", f"⛔ Blocked: {reason}")
+
+    def set_needs_detail(self, slice_id: str, message: str) -> None:
+        num = _num(slice_id)
+        remove = ",".join(v for k, v in LABELS.items() if k != "needs-detail")
+        self.gh(
+            "issue", "edit", num, "--add-label", LABELS["needs-detail"], "--remove-label", remove
+        )
+        self.gh("issue", "comment", num, "--body", f"❓ Needs detail:\n\n{message}")
 
     # --- mapping -------------------------------------------------------------
 

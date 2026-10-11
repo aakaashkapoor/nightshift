@@ -24,6 +24,7 @@ class Source(Protocol):
     def get(self, slice_id: str) -> Slice | None: ...
     def set_status(self, slice_id: str, status: str) -> None: ...
     def set_blocked(self, slice_id: str, reason: str) -> None: ...
+    def set_needs_detail(self, slice_id: str, message: str) -> None: ...
 
 
 class LocalMdSource:
@@ -71,6 +72,16 @@ class LocalMdSource:
         sl.status = "blocked"
         if reason and "## Blocked" not in sl.body:
             sl.body = sl.body.rstrip() + f"\n\n## Blocked\n{reason}\n"
+        self.save(sl)
+
+    def set_needs_detail(self, slice_id: str, message: str) -> None:
+        """Park an incomplete issue and say what it lacks."""
+        sl = self.get(slice_id)
+        if sl is None:
+            raise KeyError(f"no slice {slice_id!r} in {self.root}")
+        sl.status = "needs-detail"
+        if "## Needs detail" not in sl.body:
+            sl.body = sl.body.rstrip() + f"\n\n## Needs detail\n{message}\n"
         self.save(sl)
 
 

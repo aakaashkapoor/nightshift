@@ -338,6 +338,8 @@ def test_configure_logging_stdout_and_file(tmp_path) -> None:
 
 def test_run_daemon_cli_once(repo, tmp_path) -> None:
     _write_slice(repo, "slice-001")
+    with (repo / ".slices" / "slice-001.md").open("a", encoding="utf-8") as f:
+        f.write("\n## Acceptance\n- done\n")  # the CLI lints issues
     cfg = tmp_path / "config.yaml"
     cfg.write_text(
         f'repos:\n  demo:\n    path: "{repo.as_posix()}"\n    check: "echo ok"\n',

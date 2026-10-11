@@ -74,4 +74,6 @@ def test_attention_kinds() -> None:
         "all_done",
         "stalled",
         "main_red",
+        "needs_detail",
+        "question",
     } == set(ATTENTION)

@@ -23,6 +23,8 @@ ATTENTION = frozenset(
         "all_done",
         "stalled",
         "main_red",
+        "needs_detail",
+        "question",
     }
 )
 

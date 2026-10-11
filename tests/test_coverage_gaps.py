@@ -94,9 +94,14 @@ def test_resolver_invokes_executor() -> None:
     assert ex.calls and ex.calls[0][0] == "/some/worktree"
 
 
-def test_agent_reviewer_parses_findings() -> None:
-    ex = FakeExec(json.dumps({"findings": [{"severity": "blocking", "message": "b"}]}))
-    result = AgentReviewer(ex).review("/wt", None)
+def test_agent_reviewer_parses_findings(tmp_path) -> None:
+    _gitr(tmp_path, "init", "-b", "main")
+    ident = ["-c", "user.name=T", "-c", "user.email=t@e"]
+    _gitr(tmp_path, *ident, "commit", "--allow-empty", "-m", "i")
+    msg = "b at a.py:1"
+    ex = FakeExec(json.dumps({"findings": [{"severity": "blocking", "message": msg}]}))
+    sl = Slice.parse("---\nid: s\ntitle: t\nstatus: ready\n---\n## Goal\ng\n")
+    result = AgentReviewer(ex).review(tmp_path, sl)
     assert len(result.blocking) == 1
 
 

@@ -135,9 +135,20 @@ def test_executor_success_mentioning_limits_is_not_limited() -> None:
     assert res.usage_limited is False
 
 
-def test_reviewer_raises_on_usage_limit() -> None:
+def test_reviewer_raises_on_usage_limit(tmp_path) -> None:
+    import subprocess
+
+    from nightshift.slice import Slice
+
+    for args in (["init", "-b", "main"], ["commit", "--allow-empty", "-m", "i"]):
+        subprocess.run(
+            ["git", "-C", str(tmp_path), "-c", "user.name=T", "-c", "user.email=t@e", *args],
+            check=True,
+            capture_output=True,
+        )
+    sl = Slice.parse("---\nid: s\ntitle: t\nstatus: ready\n---\n## Goal\ng\n")
     with pytest.raises(UsageLimitReached) as info:
-        AgentReviewer(Executor(runner=_runner(LIMIT_JSON))).review("/wt", None)
+        AgentReviewer(Executor(runner=_runner(LIMIT_JSON))).review(tmp_path, sl)
     assert info.value.session_id == "lim-1"
 
 

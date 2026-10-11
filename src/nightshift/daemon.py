@@ -748,7 +748,9 @@ def run_daemon_cli(
         repo_cfg=repo_cfg,
         executor=ex,
         resolver=Resolver(ex.with_model(repo_cfg.model_for("resolve")), escalate=ex),
-        reviewer=AgentReviewer(ex.with_model(repo_cfg.model_for("review"))),
+        reviewer=AgentReviewer(
+            ex.with_model(repo_cfg.model_for("review")), base_branch=repo_cfg.base_branch
+        ),
         notifier=build_notifier(cfg.defaults.get("notifier")),
         pr=GitHubPR(repo_cfg.path) if repo_cfg.babysit else None,
         runtime=Runtime(home / "runtime.json"),

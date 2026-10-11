@@ -53,6 +53,19 @@ def test_conflict_markers_are_flagged_with_their_line(wt) -> None:
     ]
 
 
+def test_setext_heading_underline_is_not_a_marker(wt) -> None:
+    (wt / "doc.md").write_bytes(b"Title\n=======\ntext\n")
+    assert content_problems(wt, "main") == []
+
+
+def test_bare_separator_counts_once_the_file_opens_a_conflict(wt) -> None:
+    (wt / "doc.md").write_bytes(b"Title\n=======\n<<<<<<< HEAD\n")
+    assert content_problems(wt, "main") == [
+        "doc.md:2: conflict marker",
+        "doc.md:3: conflict marker",
+    ]
+
+
 def test_a_non_utf8_file_with_markers_reports_both(wt) -> None:
     (wt / "x.txt").write_bytes(b"\xff\n<<<<<<< HEAD\n")
     assert content_problems(wt, "main") == [

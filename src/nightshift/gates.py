@@ -22,9 +22,13 @@ def _changed_files(worktree: Path, base_branch: str) -> list[str]:
     return [name for name in out.split("\0") if name]
 
 
-def _is_marker(line: bytes) -> bool:
+def _is_marker(line: bytes, has_open: bool) -> bool:
+    """A bare ======= is a marker only in a file that also opens a conflict.
+
+    Alone it is a legitimate Markdown setext heading underline.
+    """
     line = line.rstrip(b"\r")
-    return line.startswith((b"<<<<<<< ", b">>>>>>> ")) or line == b"======="
+    return line.startswith((b"<<<<<<< ", b">>>>>>> ")) or (has_open and line == b"=======")
 
 
 def content_problems(worktree: Path | str, base_branch: str = "main") -> list[str]:
@@ -44,7 +48,9 @@ def content_problems(worktree: Path | str, base_branch: str = "main") -> list[st
             problems.append(
                 f"{name}: not UTF-8 (byte 0x{data[exc.start]:02X} at offset {exc.start})"
             )
-        for number, line in enumerate(data.split(b"\n"), start=1):
-            if _is_marker(line):
+        lines = data.split(b"\n")
+        has_open = any(line.startswith(b"<<<<<<< ") for line in lines)
+        for number, line in enumerate(lines, start=1):
+            if _is_marker(line, has_open):
                 problems.append(f"{name}:{number}: conflict marker")
     return problems

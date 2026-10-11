@@ -14,11 +14,12 @@ conflicts and landing a single clean commit. No hands.
 - **Yours to shape.** Sources (local files *or* GitHub Issues), checks,
   review, notifiers, trackers — all pluggable behind small interfaces.
 
-> ⚠️ **Status: early (v0.3, pre-alpha).** The core engine works and is proven with
-> a real agent (see [DEMO.md](./DEMO.md)): parallel Work in isolated worktrees, a
-> serial merge-train, agent-driven conflict resolution, always-on AI review,
-> escalation + resume, and GitHub-issues/PR adapters. Not yet published to PyPI.
-> Follow [BUILD_PLAN.md](./BUILD_PLAN.md) for what's done and what's next.
+> ⚠️ **Status: early (v2, pre-alpha).** The core engine works and is proven with
+> a real agent (see [DEMO.md](./DEMO.md)). v2 (October 2026) adds sized issues,
+> usage-limit pause and resume, a worker pool with a supervisor, deterministic
+> `nsh` commands for issues, PRs and status, and a conflict ladder that tries
+> plain git before an agent. Design: [the v2 spec](./docs/superpowers/specs/2026-10-11-nightshift-v2-design.md).
+> Not yet published to PyPI.
 
 ## Inspiration & credit
 

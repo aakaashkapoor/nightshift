@@ -275,6 +275,7 @@ def run_slice(
     resume_session: str | None = None,
     result_contract: bool = False,
     resume_prompt: str | None = None,
+    install_cmd: str | None = None,
 ) -> SliceResult:
     """Work -> check -> review -> one commit.
 
@@ -293,6 +294,11 @@ def run_slice(
         sl.attempts = attempts
         worktrees.preserve(sl.id)
         return SliceResult(sl.id, "blocked", attempts, None, wt.branch, reason, last_session)
+
+    if install_cmd and not resuming:
+        installed = run_check(install_cmd, wt.path)
+        if not installed.passed:
+            return _blocked(f"install failed: {installed.output[-300:]}")
 
     # Work: iterate until the check is green (or the cap trips).
     green = False

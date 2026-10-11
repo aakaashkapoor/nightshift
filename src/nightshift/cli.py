@@ -62,14 +62,22 @@ def init(
     push: bool = typer.Option(
         False, "--push/--no-push", help="Push base to origin after a successful merge"
     ),
+    install: str | None = typer.Option(
+        None, "--install", help="Per-worktree dependency install (detected from the lockfile)"
+    ),
+    sync: str | None = typer.Option(
+        None, "--sync", help="Post-merge sync in the main checkout (detected from the lockfile)"
+    ),
 ) -> None:
     """Register a repo in the Nightshift config (auto-detects the check)."""
     from nightshift.config import register_repo
-    from nightshift.detect import detect_check
+    from nightshift.detect import detect_check, detect_install, detect_sync
 
     repo = repo.resolve()
     name = name or repo.name
     check = check or detect_check(repo) or "echo 'TODO: set your check command'"
+    install = install or detect_install(repo)
+    sync = sync or detect_sync(repo)
     symlink_dirs = [s.strip() for s in symlink.split(",")] if symlink else None
     target = register_repo(
         config,
@@ -79,10 +87,16 @@ def init(
         source=source,
         symlink_dirs=symlink_dirs,
         push=push,
+        sync=sync,
+        install=install,
     )
-    typer.echo(
-        f"registered '{name}' -> {repo}\n  check:  {check}\n  source: {source}\n  config: {target}"
-    )
+    lines = [f"registered '{name}' -> {repo}", f"  check:  {check}"]
+    if install:
+        lines.append(f"  install: {install}")
+    if sync:
+        lines.append(f"  sync:    {sync}")
+    lines += [f"  source: {source}", f"  config: {target}"]
+    typer.echo("\n".join(lines))
 
 
 @app.command()

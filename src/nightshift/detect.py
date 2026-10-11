@@ -18,6 +18,28 @@ _MARKERS: list[tuple[str, str]] = [
 ]
 
 
+_INSTALLS: list[tuple[str, str]] = [
+    ("pnpm-lock.yaml", "pnpm install --frozen-lockfile"),
+    ("package-lock.json", "npm ci"),
+    ("yarn.lock", "yarn install --frozen-lockfile"),
+    ("uv.lock", "uv sync --frozen"),
+]
+
+
+def detect_install(repo_path: Path | str) -> str | None:
+    """The per-worktree dependency install, from the lockfile present."""
+    p = Path(repo_path)
+    for lockfile, command in _INSTALLS:
+        if (p / lockfile).exists():
+            return command
+    return None
+
+
+def detect_sync(repo_path: Path | str) -> str | None:
+    """The post-merge sync in the main checkout: the same lockfile-exact install."""
+    return detect_install(repo_path)
+
+
 def detect_check(repo_path: Path | str) -> str | None:
     p = Path(repo_path)
     for marker, command in _MARKERS:

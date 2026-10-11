@@ -167,6 +167,7 @@ class Daemon:
                 resume_session=resume,
                 resume_prompt=entry.get("resume_prompt"),
                 result_contract=self.result_contract,
+                install_cmd=self.repo_cfg.install,
             )
         except UsageLimitReached as exc:
             self._reset_sessions[sl.id] = exc.reset_session

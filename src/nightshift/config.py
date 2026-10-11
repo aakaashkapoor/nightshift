@@ -35,6 +35,7 @@ def register_repo(
     symlink_dirs: list | None = None,
     push: bool = False,
     sync: str | None = None,
+    install: str | None = None,
 ) -> Path:
     """Add/update a repo entry in the central config (concierge / `nsh init`)."""
     target = Path(config_path) if config_path is not None else DEFAULT_CONFIG_PATH
@@ -54,6 +55,8 @@ def register_repo(
         entry["push"] = True
     if sync:
         entry["sync"] = sync
+    if install:
+        entry["install"] = install
     repos[name] = entry
     target.parent.mkdir(parents=True, exist_ok=True)
     with target.open("w", encoding="utf-8") as handle:
@@ -97,6 +100,8 @@ class RepoConfig:
     # install`) — a symlinked dir like node_modules can end up stale in the repo
     # even though the merge is clean; see integrate_branch's docstring.
     sync: str | None = None
+    # Runs in each fresh worktree right after it is created (e.g. `npm ci`).
+    install: str | None = None
     # SPEC §9 / babysit: open a PR per slice and leave it for the driving agent to
     # review + merge. Defaults on for github-issues repos (resolved in Config).
     babysit: bool = False
@@ -185,6 +190,7 @@ class Config:
             symlink_dirs=entry.get("symlink_dirs", []),
             push=entry.get("push", False),
             sync=entry.get("sync"),
+            install=entry.get("install"),
             babysit=babysit,
             model=entry.get("model", self.defaults.get("model")),
             effort=effort,

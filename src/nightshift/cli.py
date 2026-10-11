@@ -115,12 +115,20 @@ def daemon(
     log_file: Path | None = typer.Option(
         None, "--log-file", help="Also append timestamped logs to this file"
     ),
+    child: bool = typer.Option(False, "--child", hidden=True),
 ) -> None:
     """Run the Nightshift daemon: drain ready slices (Work -> check -> commit)."""
+    from nightshift import supervisor
     from nightshift.daemon import configure_logging, run_daemon_cli
 
+    if not once and not child:
+        raise typer.Exit(
+            code=supervisor.run_supervised(
+                repo, config_path=config, interval=interval, log_file=log_file
+            )
+        )
     configure_logging(log_file)
-    results = run_daemon_cli(repo, config_path=config, once=once, interval=interval)
+    results = run_daemon_cli(repo, config_path=config, once=once, interval=interval, child=child)
     for r in results:
         commit = f" ({r.commit[:8]})" if r.commit else ""
         typer.echo(f"{r.status.upper()} {r.slice_id} [{r.branch}] — {r.detail}{commit}")

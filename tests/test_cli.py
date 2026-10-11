@@ -100,3 +100,41 @@ def test_daemon_command_no_results(monkeypatch) -> None:
     monkeypatch.setattr("nightshift.daemon.run_daemon_cli", lambda *a, **k: [])
     result = runner.invoke(app, ["daemon", "--once"])
     assert "no runnable slices" in result.stdout
+
+
+def test_daemon_without_once_is_supervised(monkeypatch) -> None:
+    seen = {}
+
+    def fake(repo, **kw):
+        seen.update(kw)
+        return 3
+
+    monkeypatch.setattr("nightshift.supervisor.run_supervised", fake)
+    result = runner.invoke(app, ["daemon", "--interval", "7"])
+    assert result.exit_code == 3
+    assert seen["interval"] == 7
+
+
+def test_daemon_child_runs_the_loop(monkeypatch) -> None:
+    seen = {}
+
+    def fake(repo, **kw):
+        seen.update(kw)
+        return []
+
+    monkeypatch.setattr("nightshift.daemon.run_daemon_cli", fake)
+    result = runner.invoke(app, ["daemon", "--child"])
+    assert result.exit_code == 0
+    assert seen["child"] is True
+
+
+def test_python_dash_m_nightshift(monkeypatch) -> None:
+    import runpy
+    import sys
+
+    import pytest
+
+    monkeypatch.setattr(sys, "argv", ["nightshift", "version"])
+    with pytest.raises(SystemExit) as exc:
+        runpy.run_module("nightshift", run_name="__main__")
+    assert exc.value.code == 0

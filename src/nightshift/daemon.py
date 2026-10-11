@@ -597,6 +597,7 @@ def run_daemon_cli(
     interval: float = 30,
     executor: Executor | None = None,
     home_root: Path | None = None,
+    child: bool = False,
 ) -> list[SliceResult]:
     """`nsh daemon` glue: build a Daemon from config and tick once or run forever."""
     cfg = Config.load(config_path)
@@ -615,6 +616,9 @@ def run_daemon_cli(
         runtime=Runtime(home / "runtime.json"),
         events=EventLog(home / "events.jsonl"),
         state=StateStore(home / "state.json"),
+        control=Control(home / "control.json"),
+        reload=lambda: Config.load(config_path).repo(str(repo)),
+        exit_event="child_exit" if child else "daemon_exit",
     )
     if once:
         return daemon.tick()

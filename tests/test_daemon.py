@@ -462,3 +462,35 @@ def test_run_daemon_cli_wires_pr_for_babysit_repos(tmp_path, monkeypatch) -> Non
     )
     run_daemon_cli("r", config_path=cfg, once=True, executor=Executor(runner=Agent()))
     assert built["path"] == tmp_path
+
+
+def test_run_daemon_cli_child_wires_supervised_options(tmp_path, monkeypatch) -> None:
+    import nightshift.daemon as dmod
+
+    cfg = tmp_path / "c.yaml"
+    cfg.write_text(
+        f"repos:\n  r:\n    path: {tmp_path.as_posix()}\n    check: echo ok\n",
+        encoding="utf-8",
+    )
+    seen = {}
+
+    class FakeDaemon:
+        def __init__(self, **kw):
+            seen.update(kw)
+
+        def run_forever(self, interval):
+            seen["interval"] = interval
+
+    monkeypatch.setattr(dmod, "Daemon", FakeDaemon)
+    run_daemon_cli(
+        tmp_path,
+        config_path=cfg,
+        child=True,
+        interval=5,
+        executor=Executor(runner=Agent()),
+        home_root=tmp_path / "ns",
+    )
+    assert seen["exit_event"] == "child_exit"
+    assert seen["interval"] == 5
+    assert seen["control"].path == tmp_path / "ns" / "repos" / "r" / "control.json"
+    assert seen["reload"]().name == "r"

@@ -247,3 +247,46 @@ def test_registry_union_merge_rebases_cleanly(repo, tmp_path) -> None:
 def test_without_registry_the_same_rebase_conflicts(repo, tmp_path) -> None:
     wm = WorktreeManager(repo, worktrees_root=tmp_path / "wts")
     assert _diverge(repo, wm).returncode != 0
+
+
+# --- checkout_remote ----------------------------------------------------------------
+
+
+def _with_origin(repo, tmp_path):
+    origin = tmp_path / "origin.git"
+    subprocess.run(["git", "init", "--bare", "-b", "main", str(origin)], check=True)
+    _git(repo, "remote", "add", "origin", str(origin))
+    _git(repo, "push", "origin", "main")
+    return origin
+
+
+def test_checkout_remote_creates_a_worktree_on_the_remote_branch(repo, tmp_path) -> None:
+    _with_origin(repo, tmp_path)
+    wm = WorktreeManager(repo, worktrees_root=tmp_path / "wts", symlink_dirs=["deps"])
+    (repo / "deps").mkdir()
+    wt = wm.create("slice-001")
+    (wt.path / "f.txt").write_text("remote\n", encoding="utf-8")
+    _git(wt.path, "add", "-A")
+    _git(wt.path, "commit", "-m", "work")
+    _git(wt.path, "push", "origin", wt.branch)
+    wm.teardown("slice-001")
+
+    got = wm.checkout_remote("slice-001")
+
+    assert got.path == wm.path_for("slice-001") and got.branch == "nightshift/slice-001"
+    assert (got.path / "f.txt").read_text(encoding="utf-8") == "remote\n"
+    assert _git(got.path, "branch", "--show-current").strip() == "nightshift/slice-001"
+    assert (got.path / "deps").exists()
+
+
+def test_checkout_remote_replaces_a_stale_worktree(repo, tmp_path) -> None:
+    _with_origin(repo, tmp_path)
+    wm = WorktreeManager(repo, worktrees_root=tmp_path / "wts")
+    wt = wm.create("slice-001")
+    _git(wt.path, "push", "origin", wt.branch)
+    (wt.path / "stale.txt").write_text("x", encoding="utf-8")  # leftover from a crash
+
+    got = wm.checkout_remote("slice-001")
+
+    assert not (got.path / "stale.txt").exists()
+    assert _git(got.path, "branch", "--show-current").strip() == "nightshift/slice-001"

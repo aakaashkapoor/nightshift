@@ -77,6 +77,11 @@ class GitHubPR:
         """The PR's state for this head branch: OPEN, MERGED or CLOSED."""
         return json.loads(self.gh("pr", "view", branch, "--json", "state"))["state"]
 
+    def view(self, branch: str) -> tuple[str, str]:
+        """(state, mergeable) for this head branch in ONE gh call; polled for every in-review PR."""
+        data = json.loads(self.gh("pr", "view", branch, "--json", "state,mergeable"))
+        return data["state"], data["mergeable"]
+
     def automerge(self, branch: str) -> None:
         self.gh("pr", "merge", branch, "--squash", "--auto")
 

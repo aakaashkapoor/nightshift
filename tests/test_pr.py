@@ -113,6 +113,12 @@ def test_state_reads_pr_state() -> None:
     assert gh.calls[0] == ("pr", "view", "nightshift/issue-42", "--json", "state")
 
 
+def test_view_reads_state_and_mergeable_in_one_call() -> None:
+    gh = FakeRunner(ret='{"state": "OPEN", "mergeable": "CONFLICTING"}')
+    assert GitHubPR(git=FakeRunner(), gh=gh).view("b") == ("OPEN", "CONFLICTING")
+    assert gh.calls == [("pr", "view", "b", "--json", "state,mergeable")]
+
+
 def test_review_label_name() -> None:
     assert REVIEW_LABEL == "review"
 

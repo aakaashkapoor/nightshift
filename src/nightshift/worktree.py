@@ -165,6 +165,15 @@ class WorktreeManager:
         for path in self.registries:
             self._ensure_line(self._info_file("attributes"), f"{path} merge=union")
 
+    def _setup(self, path: Path) -> None:
+        """Per-clone git config and shared-dir links for a freshly added worktree."""
+        self._exclude_nightshift_dir()
+        self._union_merge_registries()
+        for name in self.symlink_dirs:
+            src, dst = self.repo / name, path / name
+            if src.exists() and not dst.exists():
+                _link_dir(src, dst)
+
     def create(self, slice_id: str, base_branch: str = "main") -> Worktree:
         self.root.mkdir(parents=True, exist_ok=True)
         # Deep dependency dirs (node_modules) blow past Windows' 260-char limit;
@@ -173,12 +182,21 @@ class WorktreeManager:
         path = self.path_for(slice_id)
         branch = self.branch_for(slice_id)
         self._git("worktree", "add", "-b", branch, str(path), base_branch)
-        self._exclude_nightshift_dir()
-        self._union_merge_registries()
-        for name in self.symlink_dirs:
-            src, dst = self.repo / name, path / name
-            if src.exists() and not dst.exists():
-                _link_dir(src, dst)
+        self._setup(path)
+        return Worktree(slice_id=slice_id, path=path, branch=branch)
+
+    def checkout_remote(self, slice_id: str) -> Worktree:
+        """A worktree on origin's copy of the slice branch (its PR), replacing a stale one."""
+        self.root.mkdir(parents=True, exist_ok=True)
+        self._git("config", "core.longpaths", "true")
+        path = self.path_for(slice_id)
+        branch = self.branch_for(slice_id)
+        if path.exists():
+            self.teardown(slice_id)
+        self._git("worktree", "prune")
+        self._git("fetch", "origin", branch)
+        self._git("worktree", "add", "-B", branch, str(path), f"origin/{branch}")
+        self._setup(path)
         return Worktree(slice_id=slice_id, path=path, branch=branch)
 
     def teardown(self, slice_id: str) -> None:

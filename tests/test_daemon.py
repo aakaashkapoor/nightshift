@@ -368,7 +368,8 @@ def test_run_daemon_cli_once(repo, tmp_path) -> None:
 class FakePR:
     """Records opened PRs; answers state() from a dict keyed by branch."""
 
-    def __init__(self, states=None, fail=False, merge_error=None):
+    def __init__(self, states=None, fail=False, merge_error=None, mergeable=None):
+        self.mergeable = mergeable or {}
         self.opened = []
         self.bodies = []
         self.merged = []
@@ -391,10 +392,10 @@ class FakePR:
     def automerge(self, branch):  # pragma: no cover - babysit never automerges
         raise AssertionError("babysit must not automerge")
 
-    def state(self, branch):
+    def view(self, branch):
         if branch not in self.states:
             raise RuntimeError("no pr")
-        return self.states[branch]
+        return self.states[branch], self.mergeable.get(branch, "MERGEABLE")
 
 
 class LabelledSource(LocalMdSource):

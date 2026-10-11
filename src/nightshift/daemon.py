@@ -135,6 +135,7 @@ class Daemon:
         self._green: str | None = None  # last base commit whose check passed
         self._red: str | None = None  # last base commit whose check failed (already reported)
         self._waiting: dict[str, str] = {}  # last logged why-not-started map
+        self._rebase_tried: dict[str, str] = {}  # in-review slice id -> base commit last tried
         self._mode = "running"  # running | paused | stopping, mirrored into state.json
 
     def _emit(self, kind: str, slice_id: str | None = None, **data) -> None:
@@ -454,7 +455,7 @@ class Daemon:
             if sl.status != IN_REVIEW:
                 continue
             try:
-                state = self.pr.state(self.worktrees.branch_for(sl.id))
+                state, mergeable = self.pr.view(self.worktrees.branch_for(sl.id))
             except Exception as exc:
                 log.warning("%s: PR state unknown (%s)", sl.id, exc)
                 continue
@@ -469,6 +470,57 @@ class Daemon:
                 sl.status = BLOCKED
                 self._emit("blocked", sl.id, reason=reason)
                 self._phase(sl.id, BLOCKED, detail=reason)
+            elif mergeable == "CONFLICTING":
+                self._rebase_pr(sl)
+
+    def _rebase_pr(self, sl: Slice) -> None:
+        """Main moved under an open PR: rebase the PR branch and force-push it.
+
+        Tried once per base commit, whether it worked or not, so a PR that can't be
+        rebased is reported once and left for babysit until main moves again.
+        """
+        cfg = self.repo_cfg
+        branch = self.worktrees.branch_for(sl.id)
+        try:
+            base = _git(cfg.path, "rev-parse", cfg.base_branch)
+            if self._rebase_tried.get(sl.id) == base:
+                return
+            self._rebase_tried[sl.id] = base
+            detail = self._rebase_and_push(sl.id, branch)
+        except Exception as exc:  # git/fs trouble must not stop the poll
+            detail = str(exc)
+        if detail is None:
+            log.info("%s: PR rebased onto %s and pushed", sl.id, cfg.base_branch)
+            self._emit("pr_rebased", sl.id, branch=branch)
+            return
+        reason = f"PR conflicts with {cfg.base_branch} and could not be rebased: {detail}"
+        log.warning("%s: %s", sl.id, reason)
+        self._emit("blocked", sl.id, reason=reason)
+
+    def _rebase_and_push(self, slice_id: str, branch: str) -> str | None:
+        """Run the rebase ladder on a fresh checkout of the PR branch; None on success."""
+        cfg = self.repo_cfg
+        try:
+            wt = self.worktrees.checkout_remote(slice_id)
+            if cfg.install:
+                installed = run_check(cfg.install, wt.path)
+                if not installed.passed:
+                    return f"install failed: {installed.output[-300:].strip()}"
+            prep = prepare_branch(
+                worktree_path=wt.path,
+                base_branch=cfg.base_branch,
+                check_cmd=cfg.check,
+                resolver=self.resolver,
+                resolve_attempts=self.resolve_attempts,
+                on_conflict=self._conflict_reporter(slice_id),
+            )
+            if not prep.ok:
+                return prep.detail
+            _git(wt.path, "push", "--force-with-lease", "origin", f"HEAD:{branch}")
+            return None
+        finally:
+            if self.worktrees.exists(slice_id):
+                self.worktrees.teardown(slice_id)
 
     def _note_idle(self, slices: list[Slice]) -> None:
         open_ = {s.id: s.status for s in slices if s.status != DONE}

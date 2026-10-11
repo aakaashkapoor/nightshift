@@ -53,6 +53,8 @@ nsh init --repo .          # register a repo (auto-detects the check command)
 nsh run <slice>            # run one slice by hand: Work → check → review → commit
 nsh daemon [--once]        # drain ready slices (parallel Work + serial merge-train)
 nsh resume <slice>         # resume a blocked slice on its preserved worktree
+nsh status [--json]        # what the daemon is doing: phase and age of every slice
+nsh wait [--timeout N]     # block until something needs you; prints JSON event lines
 nsh version
 ```
 

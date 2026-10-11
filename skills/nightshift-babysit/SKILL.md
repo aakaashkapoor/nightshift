@@ -39,8 +39,19 @@ its work lands, you check it, fix it if needed, and merge it.
 
 ## Keep watching
 
-Nightshift doesn't call you. For a long run, wrap a pass in your own watcher
-(Claude Code: `/loop` or a monitor on the `gh pr list` command above).
+Don't tail the daemon log. Nightshift tells you when it needs you:
+
+1. Run `nsh status` once for the current picture.
+2. Start `nsh wait --repo <repo>` as a **background task**. It blocks until something
+   needs you, prints one JSON line per event, and exits:
+   - `review_ready` (with `pr`): a PR is waiting. Do a pass.
+   - `blocked` (with `reason`): read the reason; fix the issue text or file a follow-up.
+   - `paused_limit` (with `until`) / `resumed`: the Claude usage limit. Nothing to do.
+   - `stalled` (with `waiting`): nothing can run. Usually a blocked dependency.
+   - `all_done`: the queue is empty.
+   - `daemon_exit` (with `reason`): the daemon stopped. Restart it.
+3. Handle the event, then start `nsh wait` again. It remembers where it stopped, so
+   nothing is missed between runs.
 
 ## Rules
 

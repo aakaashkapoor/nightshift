@@ -73,27 +73,40 @@ class Slice:
         _yaml.dump(self._meta, buf)
         return f"{_FENCE}\n{buf.getvalue()}{_FENCE}\n{self.body}"
 
-    def scope_hints(self) -> set[str]:
-        """Path-like tokens under the '## Scope hints' section (advisory).
+    def touches(self) -> set[str]:
+        """Paths this slice will change, for the scheduler's lock (v2 design, Step 1).
 
-        Used only for the parallel-safety overlap check (SPEC §5) — prose words are
-        dropped; a token counts only if it looks like a path (has '.', '/' or '\\').
+        Read from '## Touches', or the older '## Scope hints' if there is no Touches
+        section. Accepts list items or comma-separated paths. The block ends at the next
+        '## ' heading or at the first blank line after a path, so a closing prose
+        paragraph is never read as paths. A token counts only if it looks like a path.
         """
-        hints: set[str] = set()
-        collecting = False
-        for line in self.body.splitlines():
+        lines = self.body.splitlines()
+        heads = [line.strip().lower() for line in lines]
+        if "## touches" in heads:
+            start = heads.index("## touches")
+        elif "## scope hints" in heads:
+            start = heads.index("## scope hints")
+        else:
+            return set()
+        paths: set[str] = set()
+        for line in lines[start + 1 :]:
             stripped = line.strip()
-            if stripped.lower().startswith("## scope hints"):
-                collecting = True
-                continue
-            if collecting:
-                if stripped.startswith("## "):  # next section ends the block
+            if stripped.startswith("## "):
+                break
+            if not stripped:
+                if paths:
                     break
-                for token in re.split(r"[,\s]+", stripped):
-                    token = token.strip("`-*() ")
-                    if token and ("." in token or "/" in token or "\\" in token):
-                        hints.add(token)
-        return hints
+                continue
+            for token in re.split(r"[,\s]+", stripped):
+                token = token.strip("`-*() ")
+                if token and ("." in token or "/" in token or "\\" in token):
+                    paths.add(token)
+        return paths
+
+    def scope_hints(self) -> set[str]:
+        """Old name for ``touches()``."""
+        return self.touches()
 
     @classmethod
     def load(cls, path: Path | str) -> Slice:

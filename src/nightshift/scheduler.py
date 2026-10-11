@@ -17,6 +17,22 @@ READY = "ready"
 DONE = "done"
 
 
+def _norm(path: str) -> str:
+    p = path.replace("\\", "/").strip()
+    while p.startswith("./"):
+        p = p[2:]
+    return p.rstrip("/")
+
+
+def overlaps(a: set[str], b: set[str]) -> bool:
+    """True if any path in ``a`` equals, contains, or is inside any path in ``b``."""
+    for x in map(_norm, a):
+        for y in map(_norm, b):
+            if x == y or x.startswith(y + "/") or y.startswith(x + "/"):
+                return True
+    return False
+
+
 class CycleError(ValueError):
     """Raised when the slices' dependencies form a cycle."""
 

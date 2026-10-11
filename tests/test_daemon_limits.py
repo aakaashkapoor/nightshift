@@ -367,3 +367,64 @@ def test_run_forever_records_interrupt_reason(repo, tmp_path) -> None:
         d.run_forever(interval=0, max_ticks=1, sleep=lambda s: None)
     events, _ = EventLog(tmp_path / "home" / "events.jsonl").read_from(0)
     assert events[-1]["reason"] == "KeyboardInterrupt: "
+
+
+def test_reviewer_limit_resumes_build_session_but_reads_reset_from_reviewer(repo, tmp_path) -> None:
+    from nightshift.review import AgentReviewer
+
+    wts = WorktreeManager(repo, worktrees_root=tmp_path / "wts")
+    with pytest.raises(UsageLimitReached) as info:
+        run_slice(
+            _slice(),
+            repo_path=repo,
+            check_cmd="echo ok",
+            worktrees=wts,
+            executor=Executor(runner=Script(_ok("build-1"))),
+            reviewer=AgentReviewer(Executor(runner=Script(LIMIT))),
+        )
+    assert info.value.session_id == "build-1"
+    assert info.value.reset_session == "lim"
+
+
+def test_resolver_limit_reads_reset_from_resolver_session(repo, tmp_path) -> None:
+    class LimitResolver:
+        def __call__(self, worktree_path):
+            raise UsageLimitReached("build-ignored", reset_session="res-1")
+
+    class SameFile:
+        def __call__(self, argv, cwd, stdin) -> RunOutput:
+            readme = Path(cwd, "README.md")
+            readme.write_text(
+                readme.read_text(encoding="utf-8") + Path(cwd).name + "\n", encoding="utf-8"
+            )
+            return _ok()
+
+    _write_slice(repo, "slice-001")
+    _write_slice(repo, "slice-002")
+    looked_up: list[str | None] = []
+    d = _daemon(repo, tmp_path, SameFile(), Clock())
+    d.reset_lookup = lambda sid: looked_up.append(sid)
+    d.resolver = LimitResolver()
+    d.tick()
+    assert looked_up == ["res-1"]
+
+
+def test_work_phase_reviewer_limit_looks_up_reviewer_but_records_build_session(
+    repo, tmp_path
+) -> None:
+    from nightshift.review import AgentReviewer
+
+    class Build:
+        def __call__(self, argv, cwd, stdin) -> RunOutput:
+            Path(cwd, "work.txt").write_text("x", encoding="utf-8")
+            return _ok("build-1")
+
+    _write_slice(repo, "slice-001")
+    looked_up: list[str | None] = []
+    d = _daemon(repo, tmp_path, Build(), Clock())
+    d.reset_lookup = lambda sid: looked_up.append(sid)
+    d.reviewer = AgentReviewer(Executor(runner=Script(LIMIT)))
+    results = d.tick()
+    assert [r.status for r in results] == [LIMITED]
+    assert looked_up == ["lim"]
+    assert Runtime(tmp_path / "home" / "runtime.json").get("slice-001")["session_id"] == "build-1"

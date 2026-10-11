@@ -300,7 +300,10 @@ def run_slice(
     # Ship gate: always-on AI review (blocking findings loop back to a fix round).
     if reviewer is not None:
         for _ in range(review_rounds):
-            review = reviewer.review(wt.path, sl)
+            try:
+                review = reviewer.review(wt.path, sl)
+            except UsageLimitReached as exc:
+                raise UsageLimitReached(last_session, reset_session=exc.reset_session) from exc
             if not review.blocking:
                 break
             from .review import fix_prompt

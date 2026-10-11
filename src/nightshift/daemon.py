@@ -102,6 +102,7 @@ class Daemon:
         self.clock = clock
         self.reset_lookup = reset_lookup
         self.paused_until: float | None = None
+        self._reset_sessions: dict[str, str | None] = {}
         self._idle: str | None = None
 
     def _emit(self, kind: str, slice_id: str | None = None, **data) -> None:
@@ -154,6 +155,7 @@ class Daemon:
                 resume_session=resume,
             )
         except UsageLimitReached as exc:
+            self._reset_sessions[sl.id] = exc.reset_session
             return SliceResult(
                 sl.id,
                 LIMITED,
@@ -185,12 +187,14 @@ class Daemon:
             work.session_id,
         )
 
-    def _limited(self, work: SliceResult) -> SliceResult:
+    def _limited(self, work: SliceResult, reset_session: str | None = None) -> SliceResult:
         """Usage limit: keep the worktree, put the slice back in the queue, pause."""
         self.worktrees.preserve(work.slice_id)
         self.source.set_status(work.slice_id, "ready")
         self._phase(work.slice_id, "queued", detail="usage limit")
-        self._pause(work.session_id)
+        self._pause(
+            reset_session or self._reset_sessions.pop(work.slice_id, None) or work.session_id
+        )
         return SliceResult(
             work.slice_id,
             LIMITED,
@@ -220,9 +224,9 @@ class Daemon:
             return self._limited(work)
         try:
             return self._ship(work)
-        except UsageLimitReached:
+        except UsageLimitReached as exc:
             _git_ok(self.worktrees.path_for(work.slice_id), "rebase", "--abort")
-            return self._limited(work)
+            return self._limited(work, reset_session=exc.reset_session)
 
     def _ship(self, work: SliceResult) -> SliceResult:
         if work.status != DONE:  # Work itself failed -> nothing to integrate

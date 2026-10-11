@@ -144,3 +144,10 @@ def test_reviewer_raises_on_usage_limit() -> None:
 def test_resolver_raises_on_usage_limit() -> None:
     with pytest.raises(UsageLimitReached):
         Resolver(Executor(runner=_runner(LIMIT_JSON)))("/wt")
+
+
+def test_reset_session_defaults_to_session_id() -> None:
+    assert UsageLimitReached("a").reset_session == "a"
+    assert UsageLimitReached(None).reset_session is None
+    exc = UsageLimitReached("build", reset_session="rev")
+    assert (exc.session_id, exc.reset_session) == ("build", "rev")

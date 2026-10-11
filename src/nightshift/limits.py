@@ -24,9 +24,12 @@ _LIMIT_RE = re.compile(r"(?i)hit your [a-z -]*limit|usage limit reached")
 class UsageLimitReached(Exception):
     """An agent run stopped because the Claude usage limit was hit."""
 
-    def __init__(self, session_id: str | None):
+    def __init__(self, session_id: str | None, reset_session: str | None = None):
         super().__init__("usage limit reached")
+        # session_id: the build session to resume. reset_session: the session whose
+        # transcript records the limit (a reviewer's or resolver's own, if it hit it).
         self.session_id = session_id
+        self.reset_session = reset_session if reset_session is not None else session_id
 
 
 def is_usage_limit(text: str) -> bool:

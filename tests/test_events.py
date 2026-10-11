@@ -73,4 +73,5 @@ def test_attention_kinds() -> None:
         "daemon_exit",
         "all_done",
         "stalled",
+        "main_red",
     } == set(ATTENTION)

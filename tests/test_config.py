@@ -121,3 +121,10 @@ def test_unknown_effort_is_an_error() -> None:
     cfg = Config.parse('repos:\n  a: { path: ., check: "true", effort: turbo }\n')
     with pytest.raises(ValueError, match="effort"):
         cfg.repo("a")
+
+
+def test_main_gate_defaults_on_and_can_be_disabled() -> None:
+    extra = "  off-app:\n    path: ~/code/off\n    check: x\n    main_gate: false\n"
+    cfg = Config.parse(SAMPLE + extra)
+    assert cfg.repo("other-app").main_gate is True
+    assert cfg.repo("off-app").main_gate is False

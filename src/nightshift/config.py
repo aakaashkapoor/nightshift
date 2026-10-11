@@ -104,6 +104,8 @@ class RepoConfig:
     # None leaves it to the CLI's own default (the user's settings).
     model: str | None = None
     effort: str | None = None
+    # Run the check on the base branch before starting work (field note #15).
+    main_gate: bool = False
 
 
 EFFORTS = ("low", "medium", "high", "xhigh", "max")
@@ -177,4 +179,5 @@ class Config:
             babysit=babysit,
             model=entry.get("model", self.defaults.get("model")),
             effort=effort,
+            main_gate=bool(entry.get("main_gate", True)),
         )

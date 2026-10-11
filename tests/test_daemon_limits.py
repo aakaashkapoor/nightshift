@@ -347,7 +347,7 @@ def test_run_forever_records_exit_and_survives_tick_errors(repo, tmp_path) -> No
             raise RuntimeError("gh down")
         return []
 
-    d.tick = boom  # type: ignore[method-assign]
+    d.poll = boom  # type: ignore[method-assign]
     d.run_forever(interval=0, max_ticks=2, sleep=lambda s: None)
     assert calls["n"] == 2
     snap = StateStore(tmp_path / "home" / "state.json").snapshot()
@@ -362,7 +362,7 @@ def test_run_forever_records_interrupt_reason(repo, tmp_path) -> None:
     def interrupt():
         raise KeyboardInterrupt()
 
-    d.tick = interrupt  # type: ignore[method-assign]
+    d.poll = interrupt  # type: ignore[method-assign]
     with pytest.raises(KeyboardInterrupt):
         d.run_forever(interval=0, max_ticks=1, sleep=lambda s: None)
     events, _ = EventLog(tmp_path / "home" / "events.jsonl").read_from(0)

@@ -305,7 +305,7 @@ def test_resolver_cap_blocks_when_never_resolved(repo, tmp_path) -> None:
 def test_run_forever_ticks_n_times_then_stops(repo, tmp_path) -> None:
     d = _daemon(repo, tmp_path, Agent())
     calls = []
-    d.tick = lambda: calls.append(1) or []  # type: ignore[method-assign]
+    d.poll = lambda: calls.append(1) or []  # type: ignore[method-assign]
     d.run_forever(max_ticks=3, interval=0, sleep=lambda _s: None)
     assert len(calls) == 3
 

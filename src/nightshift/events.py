@@ -14,7 +14,16 @@ from pathlib import Path
 
 # Kinds that need the master agent. Others (slice_started, merged, ...) are history.
 ATTENTION = frozenset(
-    {"review_ready", "blocked", "paused_limit", "resumed", "daemon_exit", "all_done", "stalled"}
+    {
+        "review_ready",
+        "blocked",
+        "paused_limit",
+        "resumed",
+        "daemon_exit",
+        "all_done",
+        "stalled",
+        "main_red",
+    }
 )
 
 

@@ -3,6 +3,10 @@
   "aspect": "16:9",
   "theme": "dark",
   "opening": "settled",
+  "pronounce": {
+    "JSON": "Jaysawn",
+    "nsh": "NSH"
+  },
   "scenes": [
     {
       "id": "title",
@@ -96,7 +100,7 @@
         },
         "footer": "Two issues never edit the same files at once"
       },
-      "narration": "Touches work as a lock, so two issues never edit the same files at once. A worker pool fills each free slot with whatever unblocks the most work.",
+      "narration": "The files an issue touches work as a lock, so two issues never edit the same file at once. A worker pool fills each free slot with the issue that unblocks the most work.",
       "transition": {
         "type": "slide"
       }
@@ -157,7 +161,7 @@
         },
         "footer": "No git, no labels: the harness does that"
       },
-      "narration": "The agent never touches git or labels. It ends by writing a JSON report: done, a question, or a request for more files. A question goes on the issue, and your answer resumes the same session.",
+      "narration": "The agent never touches git or labels. It ends by writing a short JSON report: done, a question, or a request for more files. A question is posted on the issue, and your answer resumes the same session.",
       "transition": {
         "type": "slide"
       }
@@ -181,8 +185,8 @@
         },
         "footer": "Blocking findings must cite file:line"
       },
-      "narration": "Every change must pass your check command and a content scan. Then a reviewer reads the diff, the issue and the plan. Blocking findings must cite a file and a line.",
-      "durationMs": 10500,
+      "narration": "Every change must pass your check command, then a scan for broken encoding and leftover conflict markers. Then a reviewer reads the diff, the issue and the plan. Blocking findings must cite a file and a line.",
+      "durationMs": 13400,
       "transition": {
         "type": "slide"
       }
@@ -230,7 +234,7 @@
         },
         "footer": "Its own open PRs are rebased when main moves"
       },
-      "narration": "The pull request merges itself, unless the issue is labelled review. And when main moves, Nightshift rebases its own open pull requests.",
+      "narration": "The pull request merges itself, unless the issue has the review label. And when main moves, Nightshift rebases its own open pull requests.",
       "transition": {
         "type": "fade",
         "durationMs": 700
@@ -303,7 +307,7 @@
         "value": 45,
         "label": "issues of the renderer behind this video, built by Nightshift"
       },
-      "narration": "The tool that rendered this video was built by Nightshift. About forty-five issues of it.",
+      "narration": "Nightshift built the tool that rendered this video, across about forty-five issues.",
       "durationMs": 6500,
       "transition": {
         "type": "fade",
@@ -337,7 +341,7 @@
         },
         "footer": "Needs Claude Code and the gh CLI"
       },
-      "narration": "To start, nsh init registers a repo and detects its check and install commands. Then run the daemon, and file issues.",
+      "narration": "To start, nsh init registers a repo and detects its check and install commands. Then start the daemon and file your issues.",
       "transition": {
         "type": "fade",
         "durationMs": 700
@@ -353,7 +357,7 @@
         "line": "You slice the work. It ships overnight.",
         "accent": "github.com/aakaashkapoor/nightshift"
       },
-      "narration": "Nightshift. Open source, and it runs on your machine.",
+      "narration": "Nightshift is open source, and it runs on your machine.",
       "durationMs": 5500
     }
   ]

@@ -341,3 +341,17 @@ A Windows subagent's edits converted files to CRLF and swept an untracked cache
 into a commit.
 - **Fixed in 98d6e97:** `.gitattributes` enforces LF. Commits should add named
   files, never `git add -A`, when other work is in the tree.
+
+### 🟢 34. Closed issues keep their in-flight label (open)
+motioncraft #98 auto-merged (PR #99) and closed, but still carries
+`nightshift:in-progress`. #75 (merged by hand) still carries `nightshift:in-review`.
+The issue is closed by the PR's "Closes #N", and nothing removes Nightshift's
+label afterwards, so the issue list shows finished work as in flight.
+- **Fix:** when a slice is marked done (auto-merge or `nsh pr merge`), clear the
+  Nightshift status labels on its issue.
+
+### 🟢 35. The README video came out full-range colour (open, motioncraft #102)
+motioncraft renders `yuvj420p` (full range, sRGB transfer). The ffmpeg re-encode
+kept that, and the README video wouldn't play on the user's device until it was
+re-encoded as `yuv420p` limited range. Re-encodes now pass
+`-vf scale=in_range=full:out_range=tv,format=yuv420p -color_range tv`.

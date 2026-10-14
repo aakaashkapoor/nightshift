@@ -71,7 +71,41 @@ def test_set_status_in_progress_edits_labels() -> None:
 def test_set_status_done_closes_issue() -> None:
     src, gh = _source()
     src.set_status("issue-1", "done")
-    assert gh.calls[-1] == ("issue", "close", "1")
+    assert ("issue", "close", "1") in gh.calls
+
+
+def test_set_status_done_strips_every_status_label() -> None:
+    src, gh = _source()
+    src.set_status("issue-1", "done")
+    edit = next(c for c in gh.calls if c[:2] == ("issue", "edit"))
+    assert edit[2] == "1" and "--add-label" not in edit
+    assert set(edit[edit.index("--remove-label") + 1].split(",")) == set(LABELS.values())
+
+
+def test_set_status_done_tolerates_a_failed_label_edit() -> None:
+    class Failing(FakeGh):
+        def __call__(self, *args):
+            if args[:2] == ("issue", "edit"):
+                raise RuntimeError("label not found")
+            return super().__call__(*args)
+
+    gh = Failing(ISSUES)
+    GitHubIssuesSource(".", gh=gh).set_status("issue-1", "done")  # must not raise
+    assert ("issue", "close", "1") in gh.calls
+
+
+def test_every_depends_on_line_is_read() -> None:
+    issues = [
+        {
+            "number": 9,
+            "title": "t",
+            "body": "## Goal\nx\n\nDepends-on: #7\nDepends-on: #8, #7\ndepends-on: 6",
+            "state": "OPEN",
+            "labels": [{"name": "nightshift:ready"}],
+        }
+    ]
+    src = GitHubIssuesSource(".", gh=FakeGh(issues))
+    assert src.get("issue-9").depends_on == ["issue-7", "issue-8", "issue-6"]
 
 
 def test_set_blocked_labels_and_comments() -> None:

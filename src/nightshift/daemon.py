@@ -430,6 +430,7 @@ class Daemon:
         except Exception as exc:  # not mergeable, or gh failed: a human decides
             return self._await_review(work, url, reason=f"auto-merge failed: {exc}")
         self.source.set_status(work.slice_id, DONE)
+        self.pr.unlabel(url, BABYSIT_LABEL)
         self._emit("merged", work.slice_id, pr=url)
         self._drop(work.slice_id)
         return SliceResult(
@@ -451,7 +452,11 @@ class Daemon:
         """Pull merged work, then settle in-review slices whose PR merged or closed."""
         cfg = self.repo_cfg
         log.info("base: %s", sync_base(cfg.path, cfg.base_branch, cfg.sync))
+        phases = self.state.snapshot()["slices"] if self.state is not None else {}
         for sl in slices:
+            if sl.status == DONE and sl.id in phases:
+                self._settle_done(sl, phases[sl.id])
+                continue
             if sl.status != IN_REVIEW:
                 continue
             try:
@@ -461,6 +466,7 @@ class Daemon:
                 continue
             if state == "MERGED":
                 self.source.set_status(sl.id, DONE)
+                self.pr.unlabel(self.worktrees.branch_for(sl.id), BABYSIT_LABEL)
                 sl.status = DONE
                 self._emit("merged", sl.id)
                 self._drop(sl.id)
@@ -472,6 +478,22 @@ class Daemon:
                 self._phase(sl.id, BLOCKED, detail=reason)
             elif mergeable == "CONFLICTING":
                 self._rebase_pr(sl)
+
+    def _settle_done(self, sl: Slice, entry: dict) -> None:
+        """A done slice still listed in state.json: its issue was closed by a PR's
+        "Closes #N" on merge, or by hand. Report the merge, clear labels, drop it."""
+        if entry.get("pr"):
+            branch = self.worktrees.branch_for(sl.id)
+            try:
+                state, _ = self.pr.view(branch)
+            except Exception as exc:  # try again next poll
+                log.warning("%s: PR state unknown (%s)", sl.id, exc)
+                return
+            if state == "MERGED":
+                self.pr.unlabel(branch, BABYSIT_LABEL)
+                self._emit("merged", sl.id, pr=entry["pr"])
+        self.source.set_status(sl.id, DONE)  # strips leftover status labels
+        self._drop(sl.id)
 
     def _rebase_pr(self, sl: Slice) -> None:
         """Main moved under an open PR: rebase the PR branch and force-push it.

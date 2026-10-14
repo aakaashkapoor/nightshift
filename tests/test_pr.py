@@ -74,6 +74,19 @@ def test_open_pr_for_slice_automerges_and_closes_issue() -> None:
     assert any(c[0:2] == ("pr", "merge") and "--auto" in c for c in gh.calls)
 
 
+def test_unlabel_removes_the_label_from_the_pr() -> None:
+    gh = FakeRunner()
+    GitHubPR(git=FakeRunner(), gh=gh).unlabel("nightshift/issue-42", BABYSIT_LABEL)
+    assert gh.calls == [("pr", "edit", "nightshift/issue-42", "--remove-label", BABYSIT_LABEL)]
+
+
+def test_unlabel_tolerates_gh_errors() -> None:
+    def gh(*args):
+        raise RuntimeError("label not found")
+
+    GitHubPR(git=FakeRunner(), gh=gh).unlabel("b", BABYSIT_LABEL)  # must not raise
+
+
 def test_open_pr_for_slice_no_automerge_leaves_pr_open() -> None:
     git, gh = FakeRunner(), FakeRunner(ret="url")
     pr = GitHubPR(git=git, gh=gh)

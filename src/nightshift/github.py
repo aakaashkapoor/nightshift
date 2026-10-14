@@ -107,6 +107,11 @@ class GitHubIssuesSource:
         num = _num(slice_id)
         if status == "done":
             self.gh("issue", "close", num)
+            self._ensure_labels()
+            try:  # a closed issue keeps no status label
+                self.gh("issue", "edit", num, "--remove-label", ",".join(LABELS.values()))
+            except Exception as e:
+                log.warning("could not clear status labels on #%s: %s", num, e)
             return
         self._ensure_labels()
         add = LABELS[status]
@@ -169,8 +174,12 @@ def _num(slice_id: str) -> str:
 
 
 def _parse_depends(body: str) -> list[str]:
-    match = _DEPENDS_RE.search(body)
-    if not match:
-        return []
-    # strip whitespace FIRST, then the leading '#': " #2" -> "2", not "#2".
-    return [f"issue-{tok.strip().lstrip('#')}" for tok in match.group(1).split(",") if tok.strip()]
+    """Every ``Depends-on:`` line, each comma-separated; de-duplicated, order kept."""
+    deps: list[str] = []
+    for match in _DEPENDS_RE.finditer(body):
+        for tok in match.group(1).split(","):
+            # strip whitespace FIRST, then the leading '#': " #2" -> "2", not "#2".
+            dep = f"issue-{tok.strip().lstrip('#')}"
+            if tok.strip() and dep not in deps:
+                deps.append(dep)
+    return deps

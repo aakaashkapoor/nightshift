@@ -9,6 +9,7 @@ through injectable runners so this is unit-testable without a live remote.
 from __future__ import annotations
 
 import json
+import logging
 import subprocess
 import time
 from collections.abc import Callable, Sequence
@@ -19,6 +20,7 @@ from ._exe import GH_DIRS, which
 
 BABYSIT_LABEL = "nightshift:babysit"
 REVIEW_LABEL = "review"  # on the issue: wait for a human instead of auto-merging
+log = logging.getLogger(__name__)
 
 
 def issue_number_for(slice_id: str) -> str | None:
@@ -82,6 +84,13 @@ class GitHubPR:
         """(state, mergeable) for this head branch in ONE gh call; polled for every in-review PR."""
         data = json.loads(self.gh("pr", "view", branch, "--json", "state,mergeable"))
         return data["state"], data["mergeable"]
+
+    def unlabel(self, ref: str, label: str) -> None:
+        """Take a label off a PR (branch, number or URL); a gh error is only logged."""
+        try:
+            self.gh("pr", "edit", ref, "--remove-label", label)
+        except Exception as exc:
+            log.warning("could not remove %s from PR %s: %s", label, ref, exc)
 
     def automerge(self, branch: str) -> None:
         self.gh("pr", "merge", branch, "--squash", "--auto")

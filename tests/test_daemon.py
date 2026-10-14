@@ -376,6 +376,8 @@ class FakePR:
         self.merge_error = merge_error
         self.states = states or {}
         self.fail = fail
+        self.viewed = []
+        self.unlabeled = []
 
     def open(self, *, branch, base, title, body, labels=()):
         if self.fail:
@@ -393,9 +395,13 @@ class FakePR:
         raise AssertionError("babysit must not automerge")
 
     def view(self, branch):
+        self.viewed.append(branch)
         if branch not in self.states:
             raise RuntimeError("no pr")
         return self.states[branch], self.mergeable.get(branch, "MERGEABLE")
+
+    def unlabel(self, ref, label):
+        self.unlabeled.append((ref, label))
 
 
 class LabelledSource(LocalMdSource):
@@ -464,6 +470,7 @@ def test_issue_without_review_label_is_merged_by_nightshift(repo, tmp_path) -> N
 
     assert results[0].status == "done" and results[0].detail == "merged"
     assert pr.opened and pr.merged == ["nightshift/slice-001"]
+    assert pr.unlabeled == [("https://gh/pr/nightshift/slice-001", "nightshift:babysit")]
     assert Slice.load(repo / ".slices" / "slice-001.md").status == "done"  # not stuck in-review
     assert not d.worktrees.exists("slice-001")
     assert state.snapshot()["slices"] == {}
@@ -507,6 +514,81 @@ def test_watcher_marks_merged_pr_done(repo, tmp_path) -> None:
     pr = FakePR(states={"nightshift/slice-001": "MERGED"})
     _babysit_daemon(repo, pr, tmp_path).tick()
     assert Slice.load(repo / ".slices" / "slice-001.md").status == "done"
+    assert pr.unlabeled == [("nightshift/slice-001", "nightshift:babysit")]
+
+
+class RecordingSource(LabelledSource):
+    def __init__(self, repo):
+        super().__init__(repo, ())
+        self.statuses = []
+
+    def set_status(self, slice_id, status):
+        self.statuses.append((slice_id, status))
+        super().set_status(slice_id, status)
+
+
+def _settle_daemon(repo, pr, tmp_path, phases):
+    """A babysit daemon whose state.json already records ``phases`` (slice id -> fields)."""
+    from nightshift.events import EventLog
+    from nightshift.state import StateStore
+
+    state = StateStore(tmp_path / "state.json")
+    for sid, fields in phases.items():
+        state.set_slice(sid, **fields)
+    d = _babysit_daemon(repo, pr, tmp_path, events=EventLog(tmp_path / "events.jsonl"), state=state)
+    d.source = RecordingSource(repo)
+    return d
+
+
+def test_watcher_settles_a_slice_whose_issue_the_merge_closed(repo, tmp_path) -> None:
+    # "Closes #N" closed the issue on merge, so the slice reads as done while
+    # state.json still shows it in review (seen live 2026-10-14).
+    _write_slice(repo, "slice-001", status="done")
+    pr = FakePR(states={"nightshift/slice-001": "MERGED"})
+    url = "https://gh/pr/nightshift/slice-001"
+    d = _settle_daemon(repo, pr, tmp_path, {"slice-001": {"phase": "in-review", "pr": url}})
+    d.tick()
+    d.tick()  # settled once; a second poll changes nothing
+
+    assert d.state.snapshot()["slices"] == {}
+    merged = [e for e in _events(d.events.path) if e["kind"] == "merged"]
+    assert [(e["slice"], e["pr"]) for e in merged] == [("slice-001", url)]
+    assert d.source.statuses == [("slice-001", "done")]  # strips leftover status labels
+    assert pr.unlabeled == [("nightshift/slice-001", "nightshift:babysit")]
+
+
+def test_watcher_drops_a_slice_closed_by_hand(repo, tmp_path) -> None:
+    _write_slice(repo, "slice-001", status="done")
+    _write_slice(repo, "slice-002", status="done")  # long done, no phase: left alone
+    pr = FakePR()
+    d = _settle_daemon(repo, pr, tmp_path, {"slice-001": {"phase": "waiting", "detail": "x"}})
+    d.tick()
+
+    assert d.state.snapshot()["slices"] == {}
+    assert not [e for e in _events(d.events.path) if e["kind"] == "merged"]
+    assert pr.viewed == [] and pr.unlabeled == []  # no PR recorded, none looked up
+    assert d.source.statuses == [("slice-001", "done")]
+
+
+def test_watcher_drops_a_done_slice_whose_pr_closed_unmerged(repo, tmp_path) -> None:
+    _write_slice(repo, "slice-001", status="done")
+    pr = FakePR(states={"nightshift/slice-001": "CLOSED"})
+    d = _settle_daemon(repo, pr, tmp_path, {"slice-001": {"phase": "in-review", "pr": "u"}})
+    d.tick()
+
+    assert d.state.snapshot()["slices"] == {}
+    assert not [e for e in _events(d.events.path) if e["kind"] == "merged"]
+    assert pr.unlabeled == []
+
+
+def test_watcher_retries_a_done_slice_when_its_pr_lookup_fails(repo, tmp_path) -> None:
+    _write_slice(repo, "slice-001", status="done")
+    pr = FakePR()  # view raises
+    d = _settle_daemon(repo, pr, tmp_path, {"slice-001": {"phase": "in-review", "pr": "u"}})
+    d.tick()
+
+    assert d.state.snapshot()["slices"]["slice-001"]["phase"] == "in-review"
+    assert d.source.statuses == []
 
 
 def test_watcher_blocks_closed_pr(repo, tmp_path) -> None:

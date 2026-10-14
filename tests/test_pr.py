@@ -9,6 +9,7 @@ from nightshift.pr import (
     REVIEW_LABEL,
     GitHubPR,
     build_pr_body,
+    checks_state,
     issue_number_for,
     open_pr_for_slice,
 )
@@ -174,7 +175,7 @@ class Clock:
 
 def test_merge_waits_through_unknown_then_squash_merges() -> None:
     gh, clock = MergeGh(["UNKNOWN", "UNKNOWN", "MERGEABLE"]), Clock()
-    GitHubPR(git=FakeRunner(), gh=gh).merge("b", sleep=clock.sleep, clock=clock)
+    GitHubPR(git=FakeRunner(), gh=gh).merge("b", sleep=clock.sleep, clock=clock, checks_grace=0.0)
     assert clock.slept == [3.0, 3.0]
     assert gh.calls[-1] == ("pr", "merge", "b", "--squash", "--delete-branch")
 
@@ -193,3 +194,83 @@ def test_merge_times_out_while_unknown() -> None:
             "b", wait=10.0, poll=4.0, sleep=clock.sleep, clock=clock
         )
     assert clock.slept == [4.0, 4.0, 4.0]  # polled until the 10s wait ran out
+
+
+class ChecksGh(MergeGh):
+    """MergeGh that also answers `pr view --json statusCheckRollup` from a list of rollups."""
+
+    def __init__(self, rollups, mergeable="MERGEABLE"):
+        super().__init__([mergeable])
+        self.rollups = list(rollups)
+
+    def __call__(self, *args):
+        if args[:2] == ("pr", "view") and "statusCheckRollup" in args:
+            self.calls.append(args)
+            rollup = self.rollups.pop(0) if len(self.rollups) > 1 else self.rollups[0]
+            return json.dumps({"statusCheckRollup": rollup})
+        return super().__call__(*args)
+
+
+def _run(name, status="COMPLETED", conclusion="SUCCESS"):
+    return {"__typename": "CheckRun", "name": name, "status": status, "conclusion": conclusion}
+
+
+def _ctx(context, state):
+    return {"__typename": "StatusContext", "context": context, "state": state}
+
+
+@pytest.mark.parametrize(
+    ("rollup", "expected"),
+    [
+        ([], ("none", [])),
+        (
+            [_run("check"), _run("lint", conclusion="SKIPPED"), _run("x", conclusion="NEUTRAL")],
+            ("passed", []),
+        ),
+        ([_run("check"), _run("lint", status="IN_PROGRESS", conclusion="")], ("pending", [])),
+        (
+            [_run("check", conclusion="FAILURE"), _run("lint", status="QUEUED", conclusion="")],
+            ("failed", ["check"]),
+        ),
+        ([_ctx("ci/legacy", "SUCCESS")], ("passed", [])),
+        ([_ctx("ci/legacy", "PENDING"), _ctx("ci/other", "EXPECTED")], ("pending", [])),
+        (
+            [_ctx("ci/legacy", "ERROR"), _run("check", conclusion="CANCELLED")],
+            ("failed", ["ci/legacy", "check"]),
+        ),
+        ([{"status": "COMPLETED", "conclusion": "TIMED_OUT"}], ("failed", ["check"])),
+    ],
+)
+def test_checks_state(rollup, expected) -> None:
+    assert checks_state(rollup) == expected
+
+
+def test_merge_waits_for_pending_ci_then_merges() -> None:
+    pending = [_run("check", status="IN_PROGRESS", conclusion="")]
+    gh, clock = ChecksGh([pending, pending, [_run("check")]]), Clock()
+    GitHubPR(git=FakeRunner(), gh=gh).merge("b", sleep=clock.sleep, clock=clock)
+    assert clock.slept == [15.0, 15.0]
+    assert gh.calls[-1] == ("pr", "merge", "b", "--squash", "--delete-branch")
+
+
+def test_merge_refuses_when_ci_fails() -> None:
+    gh, clock = ChecksGh([[_run("check"), _run("lint-repo", conclusion="FAILURE")]]), Clock()
+    with pytest.raises(RuntimeError, match="CI failed: lint-repo"):
+        GitHubPR(git=FakeRunner(), gh=gh).merge("b", sleep=clock.sleep, clock=clock)
+    assert not any(c[:2] == ("pr", "merge") for c in gh.calls)
+
+
+def test_merge_without_ci_waits_out_the_grace_then_merges() -> None:
+    gh, clock = ChecksGh([[]]), Clock()
+    GitHubPR(git=FakeRunner(), gh=gh).merge("b", sleep=clock.sleep, clock=clock, checks_grace=30.0)
+    assert clock.slept == [15.0, 15.0]  # checks get time to register; none did
+    assert gh.calls[-1] == ("pr", "merge", "b", "--squash", "--delete-branch")
+
+
+def test_merge_gives_up_when_ci_outlasts_the_wait() -> None:
+    gh, clock = ChecksGh([[_run("check", status="QUEUED", conclusion="")]]), Clock()
+    with pytest.raises(RuntimeError, match="CI still running after 1 min"):
+        GitHubPR(git=FakeRunner(), gh=gh).merge(
+            "b", sleep=clock.sleep, clock=clock, checks_wait=60.0
+        )
+    assert not any(c[:2] == ("pr", "merge") for c in gh.calls)

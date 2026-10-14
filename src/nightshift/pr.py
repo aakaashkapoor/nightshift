@@ -13,6 +13,7 @@ import subprocess
 import time
 from collections.abc import Callable, Sequence
 from pathlib import Path
+from typing import Any
 
 from ._exe import GH_DIRS, which
 
@@ -91,12 +92,16 @@ class GitHubPR:
         *,
         wait: float = 60.0,
         poll: float = 3.0,
+        checks_grace: float = 30.0,
+        checks_wait: float = 1800.0,
+        checks_poll: float = 15.0,
         sleep: Callable[[float], None] = time.sleep,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
-        """Squash-merge once GitHub has worked out mergeability; raise if it isn't mergeable.
+        """Squash-merge once GitHub has worked out mergeability and CI has passed.
 
         GitHub reports UNKNOWN for a few seconds after a push, so wait it out (field note #8).
+        Then wait for the PR's checks (`wait_for_checks`); raise if it isn't mergeable or CI fails.
         """
         deadline = clock() + wait
         while True:
@@ -108,7 +113,70 @@ class GitHubPR:
             sleep(poll)
         if mergeable != "MERGEABLE":
             raise RuntimeError(f"not mergeable: {mergeable}")
+        self.wait_for_checks(
+            branch, grace=checks_grace, wait=checks_wait, poll=checks_poll, sleep=sleep, clock=clock
+        )
         self.gh("pr", "merge", branch, "--squash", "--delete-branch")
+
+    def wait_for_checks(
+        self,
+        branch: str,
+        *,
+        grace: float,
+        wait: float,
+        poll: float,
+        sleep: Callable[[float], None],
+        clock: Callable[[], float],
+    ) -> None:
+        """Block until the PR's CI checks pass; raise if any fail or they outlast `wait`.
+
+        Checks take a few seconds to register after a push, so a PR with none yet is
+        given `grace` before it counts as a repo without CI (and merges).
+        """
+        start = clock()
+        while True:
+            view = json.loads(self.gh("pr", "view", branch, "--json", "statusCheckRollup"))
+            state, failed = checks_state(view.get("statusCheckRollup") or [])
+            if state == "passed":
+                return
+            if state == "failed":
+                raise RuntimeError("CI failed: " + ", ".join(failed))
+            elapsed = clock() - start
+            if state == "none" and elapsed >= grace:
+                return
+            if elapsed >= wait:
+                raise RuntimeError(f"CI still running after {int(wait // 60)} min")
+            sleep(poll)
+
+
+# A finished check run with one of these conclusions does not block a merge.
+_CHECK_RUN_OK = ("SUCCESS", "NEUTRAL", "SKIPPED")
+
+
+def checks_state(rollup: Sequence[dict[str, Any]]) -> tuple[str, list[str]]:
+    """Summarize a PR's `statusCheckRollup`: ("none" | "pending" | "passed" | "failed", failed names).
+
+    Entries are GitHub Actions check runs (`status` + `conclusion`) or legacy commit
+    statuses (`state`). Any failure wins over anything still running.
+    """
+    if not rollup:
+        return "none", []
+    failed: list[str] = []
+    pending = False
+    for check in rollup:
+        name = check.get("name") or check.get("context") or "check"
+        if "status" in check:
+            if check["status"] != "COMPLETED":
+                pending = True
+            elif check.get("conclusion") not in _CHECK_RUN_OK:
+                failed.append(name)
+        elif check.get("state") in ("PENDING", "EXPECTED"):
+            pending = True
+        elif check.get("state") != "SUCCESS":
+            failed.append(name)
+    if failed:
+        return "failed", failed
+    return ("pending", []) if pending else ("passed", [])
 
 
 def open_pr_for_slice(

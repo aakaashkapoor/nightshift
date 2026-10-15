@@ -138,3 +138,13 @@ def test_python_dash_m_nightshift(monkeypatch) -> None:
     with pytest.raises(SystemExit) as exc:
         runpy.run_module("nightshift", run_name="__main__")
     assert exc.value.code == 0
+
+
+def test_resume_command_in_review_exits_0(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "nightshift.pipeline.run_resume_cli",
+        lambda *a, **k: SliceResult("s", "in-review", 1, "abc", "nightshift/s", "https://gh/pr/1"),
+    )
+    result = runner.invoke(app, ["resume", "s"])
+    assert result.exit_code == 0
+    assert "IN-REVIEW" in result.output

@@ -700,6 +700,16 @@ class Daemon:
         self._record_runtime(results)
         return results
 
+    def finish(self, work: SliceResult) -> SliceResult:
+        """Ship one slice finished outside the pool (`nsh resume`) exactly as a poll would."""
+        if self.repo_cfg.babysit:
+            cfg = self.repo_cfg
+            log.info("base: %s", sync_base(cfg.path, cfg.base_branch, cfg.sync))
+        results = [self._integrate(work)]
+        self._log_results(results)
+        self._record_runtime(results)
+        return results[0]
+
     def _log_results(self, results: list[SliceResult]) -> None:
         for r in results:
             if r.status == DONE:
@@ -867,6 +877,42 @@ class Daemon:
                 self._pool.shutdown(wait=True)
 
 
+def build_daemon(
+    repo,
+    *,
+    config_path=None,
+    executor: Executor | None = None,
+    home_root: Path | None = None,
+    child: bool = False,
+    runtime_path: Path | str | None = None,
+) -> Daemon:
+    """A Daemon wired from config, shared by `nsh daemon` and `nsh resume`."""
+    cfg = Config.load(config_path)
+    repo_cfg = cfg.repo(str(repo))
+    ex = executor if executor is not None else Executor.for_repo(repo_cfg)
+    home = repo_home(repo_cfg.name, home_root)
+    return Daemon(
+        source=build_source(repo_cfg),
+        repo_cfg=repo_cfg,
+        executor=ex,
+        resolver=Resolver(ex.with_model(repo_cfg.model_for("resolve")), escalate=ex),
+        reviewer=AgentReviewer(
+            ex.with_model(repo_cfg.model_for("review")), base_branch=repo_cfg.base_branch
+        ),
+        notifier=build_notifier(cfg.defaults.get("notifier")),
+        pr=GitHubPR(repo_cfg.path) if repo_cfg.babysit else None,
+        runtime=Runtime(runtime_path if runtime_path is not None else home / "runtime.json"),
+        events=EventLog(home / "events.jsonl"),
+        state=StateStore(home / "state.json"),
+        conflicts=ConflictLog(home / "conflicts.json"),
+        control=Control(home / "control.json"),
+        reload=lambda: Config.load(config_path).repo(str(repo)),
+        exit_event="child_exit" if child else "daemon_exit",
+        lint_issues=True,
+        result_contract=True,
+    )
+
+
 def run_daemon_cli(
     repo,
     *,
@@ -878,34 +924,14 @@ def run_daemon_cli(
     child: bool = False,
 ) -> list[SliceResult]:
     """`nsh daemon` glue: build a Daemon from config and tick once or run forever."""
-    cfg = Config.load(config_path)
-    repo_cfg = cfg.repo(str(repo))
-    ex = executor if executor is not None else Executor.for_repo(repo_cfg)
+    daemon = build_daemon(
+        repo, config_path=config_path, executor=executor, home_root=home_root, child=child
+    )
+    ex, repo_cfg = daemon.executor, daemon.repo_cfg
     log.info("claude: model %s, effort %s", ex.model or "CLI default", ex.effort or "CLI default")
     roles = ("S", "M", "L", "review", "resolve")
     log.info(
         "models: %s", ", ".join(f"{r}={repo_cfg.model_for(r) or 'CLI default'}" for r in roles)
-    )
-    home = repo_home(repo_cfg.name, home_root)
-    daemon = Daemon(
-        source=build_source(repo_cfg),
-        repo_cfg=repo_cfg,
-        executor=ex,
-        resolver=Resolver(ex.with_model(repo_cfg.model_for("resolve")), escalate=ex),
-        reviewer=AgentReviewer(
-            ex.with_model(repo_cfg.model_for("review")), base_branch=repo_cfg.base_branch
-        ),
-        notifier=build_notifier(cfg.defaults.get("notifier")),
-        pr=GitHubPR(repo_cfg.path) if repo_cfg.babysit else None,
-        runtime=Runtime(home / "runtime.json"),
-        events=EventLog(home / "events.jsonl"),
-        state=StateStore(home / "state.json"),
-        conflicts=ConflictLog(home / "conflicts.json"),
-        control=Control(home / "control.json"),
-        reload=lambda: Config.load(config_path).repo(str(repo)),
-        exit_event="child_exit" if child else "daemon_exit",
-        lint_issues=True,
-        result_contract=True,
     )
     if once:
         return daemon.tick()

@@ -659,6 +659,7 @@ def test_run_daemon_cli_child_wires_supervised_options(tmp_path, monkeypatch) ->
     class FakeDaemon:
         def __init__(self, **kw):
             seen.update(kw)
+            self.executor, self.repo_cfg = kw["executor"], kw["repo_cfg"]
 
         def run_forever(self, interval):
             seen["interval"] = interval
@@ -741,6 +742,7 @@ def test_run_daemon_cli_builds_a_conflict_log(tmp_path, monkeypatch) -> None:
     class FakeDaemon:
         def __init__(self, **kw):
             seen.update(kw)
+            self.executor, self.repo_cfg = kw["executor"], kw["repo_cfg"]
 
         def run_forever(self, interval):
             pass

@@ -124,7 +124,7 @@ def resume(
     typer.echo(
         f"{result.status.upper()} {result.slice_id} [{result.branch}] — {result.detail}{commit}"
     )
-    raise typer.Exit(code=0 if result.status == "done" else 1)
+    raise typer.Exit(code=0 if result.status in ("done", "in-review") else 1)
 
 
 @app.command()

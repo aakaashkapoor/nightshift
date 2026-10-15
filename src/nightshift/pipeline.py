@@ -26,9 +26,7 @@ from .gitutil import LOCK as _GIT_LOCK
 from .limits import UsageLimitReached
 from .prompts import check_failed_prompt, repair_prompt
 from .result import AgentResult, clear_result, read_result
-from .runtime import Runtime
 from .slice import Slice
-from .source import build_source
 from .worktree import WorktreeManager
 
 CONTINUE_PROMPT = (
@@ -506,61 +504,26 @@ def run_resume_cli(
     executor: Executor | None = None,
     runtime_path=None,
 ) -> SliceResult:
-    """`nsh resume` glue: resume a blocked slice on its worktree, then integrate."""
-    cfg = Config.load(config_path)
-    repo_cfg = cfg.repo(str(repo))
-    source = build_source(repo_cfg)
-    sl = source.get(slice_id)
-    if sl is None:
-        raise FileNotFoundError(f"no slice {slice_id!r} in {repo_cfg.path}")
+    """`nsh resume` glue: resume a blocked slice on its worktree, then ship it the way the
+    daemon would for this repo (a PR under babysit, the local merge train otherwise)."""
+    from .daemon import build_daemon  # the daemon imports this module
 
-    worktrees = WorktreeManager(
-        repo_cfg.path, symlink_dirs=repo_cfg.symlink_dirs, registries=repo_cfg.registries
+    daemon = build_daemon(
+        repo, config_path=config_path, executor=executor, runtime_path=runtime_path
     )
-    runtime = Runtime(runtime_path)
-    ex = executor if executor is not None else Executor.for_repo(repo_cfg)
-
+    sl = daemon.source.get(slice_id)
+    if sl is None:
+        raise FileNotFoundError(f"no slice {slice_id!r} in {daemon.repo_cfg.path}")
+    assert daemon.runtime is not None  # build_daemon always wires one
     resumed = resume_slice(
         sl,
-        check_cmd=repo_cfg.check,
-        worktrees=worktrees,
-        executor=ex,
-        session_id=runtime.get(slice_id).get("session_id"),
+        check_cmd=daemon.repo_cfg.check,
+        worktrees=daemon.worktrees,
+        executor=daemon.executor,
+        session_id=daemon.runtime.get(slice_id).get("session_id"),
     )
     if resumed.status != "done":
-        source.set_blocked(slice_id, resumed.detail)
-        runtime.record(slice_id, session_id=resumed.session_id, branch=resumed.branch)
+        daemon.source.set_blocked(slice_id, resumed.detail)
+        daemon.runtime.record(slice_id, session_id=resumed.session_id, branch=resumed.branch)
         return resumed
-
-    integ = integrate_branch(
-        repo_path=repo_cfg.path,
-        worktree_path=worktrees.path_for(slice_id),
-        branch=resumed.branch,
-        base_branch=repo_cfg.base_branch,
-        check_cmd=repo_cfg.check,
-        push=repo_cfg.push,
-        sync_cmd=repo_cfg.sync,
-    )
-    if integ.merged:
-        worktrees.teardown(slice_id)
-        source.set_status(slice_id, "done")
-        runtime.forget(slice_id)
-        return SliceResult(
-            slice_id,
-            "done",
-            resumed.attempts,
-            integ.commit,
-            resumed.branch,
-            "resumed & merged",
-            resumed.session_id,
-        )
-    source.set_blocked(slice_id, integ.detail)  # pragma: no cover - resume re-conflict
-    return SliceResult(  # pragma: no cover
-        slice_id,
-        "blocked",
-        resumed.attempts,
-        resumed.commit,
-        resumed.branch,
-        integ.detail,
-        resumed.session_id,
-    )
+    return daemon.finish(resumed)

@@ -173,6 +173,30 @@ def test_waiting_on_deps_is_logged_once(repo, tmp_path, caplog) -> None:
     assert _snap(tmp_path)["slices"]["slice-003"]["phase"] == "waiting"
 
 
+def test_unknown_dependency_waits_and_warns_once(repo, tmp_path, caplog) -> None:
+    # A dependency the source does not return (on hold, not a Nightshift issue, a typo)
+    # must not crash the poll: the dependant waits, everything else still runs.
+    _write_slice(repo, "slice-001")
+    _write_slice(repo, "slice-022", deps="[slice-021]")
+    agent = Agent()
+    d = _daemon(repo, tmp_path, agent)
+    with caplog.at_level(logging.INFO, logger="nightshift"):
+        assert [r.slice_id for r in d.tick()] == ["slice-001"]
+        assert d.tick() == []
+        assert d.tick() == []
+    reason = "waiting on slice-021 (not ready: on hold or not a Nightshift issue)"
+    assert caplog.text.count(f"slice-022: {reason}") == 1
+    assert caplog.text.count("slice-022 depends on slice-021, which") == 1
+    entry = _snap(tmp_path)["slices"]["slice-022"]
+    assert (entry["phase"], entry["detail"]) == ("waiting", reason)
+    # Once the dependency shows up the warning state resets and the dependant runs.
+    _write_slice(repo, "slice-021")
+    with caplog.at_level(logging.INFO, logger="nightshift"):
+        assert [r.slice_id for r in d.tick()] == ["slice-021"]
+        assert [r.slice_id for r in d.tick()] == ["slice-022"]
+    assert d._unknown_deps == set()
+
+
 def test_recover_requeues_orphaned_in_progress(repo, tmp_path) -> None:
     agent = Agent()
     d = _daemon(repo, tmp_path, agent)

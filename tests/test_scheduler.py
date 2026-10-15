@@ -36,9 +36,27 @@ def test_cycle_detected() -> None:
         Dag.build([S("001", "ready", ["002"]), S("002", "ready", ["001"])])
 
 
-def test_unknown_dependency_raises() -> None:
-    with pytest.raises(ValueError):
-        Dag.build([S("002", "ready", ["999"])])
+def test_unknown_dependency_waits_instead_of_raising() -> None:
+    # A held / non-Nightshift / typo'd dependency is not in the source: the slice waits.
+    dag = Dag.build(
+        [S("001", "ready"), S("002", "ready", ["001", "999"]), S("003", "ready", ["002"])]
+    )
+    assert {s.id for s in dag.runnable()} == {"001"}
+    assert dag.unknown_deps() == {("002", "999")}
+    assert dag.waiting_reason("002") == (
+        "waiting on 001 (ready), 999 (not ready: on hold or not a Nightshift issue)"
+    )
+    assert dag.dependant_counts() == {"001": 2, "002": 1, "003": 0}
+    order = dag.topo_order()
+    assert order.index("001") < order.index("002") < order.index("003")
+
+
+def test_unknown_dependency_alone_still_waits() -> None:
+    dag = Dag.build([S("001", "done"), S("002", "ready", ["001", "999"])])
+    assert dag.runnable() == []
+    assert dag.waiting_reason("002") == (
+        "waiting on 999 (not ready: on hold or not a Nightshift issue)"
+    )
 
 
 def test_parents_and_children() -> None:

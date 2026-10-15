@@ -1,9 +1,11 @@
 """Dependency DAG + scheduler (SPEC §5).
 
 Explicit ``depends_on`` is the source of truth. This builds the graph, validates it
-(every dependency exists, no cycles), and answers the one question the daemon asks
-each tick: *which slices are runnable right now?* — i.e. ``ready`` slices whose
-every parent is ``done``. Roots (no deps) are runnable as soon as they're ready.
+(no cycles), and answers the one question the daemon asks each tick: *which slices
+are runnable right now?* — i.e. ``ready`` slices whose every parent is ``done``.
+Roots (no deps) are runnable as soon as they're ready. A dependency the source does
+not return (on hold, not a Nightshift issue, a typo) is never done: its dependant
+waits on it instead of breaking the whole graph.
 """
 
 from __future__ import annotations
@@ -15,6 +17,7 @@ from .slice import Slice
 
 READY = "ready"
 DONE = "done"
+UNKNOWN = "not ready: on hold or not a Nightshift issue"
 
 
 def _norm(path: str) -> str:
@@ -46,10 +49,6 @@ class Dag:
         by_id: dict[str, Slice] = {}
         for s in slices:
             by_id[s.id] = s
-        for s in slices:
-            for dep in s.depends_on:
-                if dep not in by_id:
-                    raise ValueError(f"slice {s.id!r} depends on unknown slice {dep!r}")
         dag = cls(slices=by_id)
         dag._topo()  # validates acyclicity (raises CycleError)
         return dag
@@ -60,12 +59,23 @@ class Dag:
     def children(self, sid: str) -> list[str]:
         return [s.id for s in self.slices.values() if sid in s.depends_on]
 
+    def status_of(self, sid: str) -> str:
+        """A slice's status; a dependency the source did not return is never done."""
+        s = self.slices.get(sid)
+        return s.status if s is not None else UNKNOWN
+
+    def unknown_deps(self) -> set[tuple[str, str]]:
+        """Every (slice, dependency) pair whose dependency the source did not return."""
+        return {
+            (s.id, d) for s in self.slices.values() for d in s.depends_on if d not in self.slices
+        }
+
     def runnable(self) -> list[Slice]:
         out = []
         for s in self.slices.values():
             if s.status != READY:
                 continue
-            if all(self.slices[d].status == DONE for d in s.depends_on):
+            if all(self.status_of(d) == DONE for d in s.depends_on):
                 out.append(s)
         return out
 
@@ -85,20 +95,21 @@ class Dag:
 
     def waiting_reason(self, sid: str) -> str | None:
         """Why a ready slice can't run yet (unfinished dependencies), or None."""
-        pending = [d for d in self.slices[sid].depends_on if self.slices[d].status != DONE]
+        pending = [d for d in self.slices[sid].depends_on if self.status_of(d) != DONE]
         if not pending:
             return None
-        return "waiting on " + ", ".join(f"{d} ({self.slices[d].status})" for d in pending)
+        return "waiting on " + ", ".join(f"{d} ({self.status_of(d)})" for d in pending)
 
     def topo_order(self) -> list[str]:
         return self._topo()
 
     def _topo(self) -> list[str]:
-        indeg = {sid: len(set(s.depends_on)) for sid, s in self.slices.items()}
+        known = {sid: set(s.depends_on) & self.slices.keys() for sid, s in self.slices.items()}
+        indeg = {sid: len(deps) for sid, deps in known.items()}
         children: dict[str, list[str]] = {sid: [] for sid in self.slices}
-        for s in self.slices.values():
-            for dep in set(s.depends_on):
-                children[dep].append(s.id)
+        for sid, deps in known.items():
+            for dep in deps:
+                children[dep].append(sid)
         queue = deque(sid for sid, d in indeg.items() if d == 0)
         order: list[str] = []
         while queue:

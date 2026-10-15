@@ -144,7 +144,9 @@ has no v2 parity: no `review` label, no PR flow, no `nsh issue`.
 ## 5. Dependencies & Scheduling
 
 - `Depends-on: #N` in the issue body; a slice starts only after its dependencies
-  have **merged**, branching off the fresh `main`.
+  have **merged**, branching off the fresh `main`. A dependency the source does not
+  return (on hold, not a Nightshift issue, a typo) never counts as merged: the
+  dependant waits on it (warned once) and every other slice keeps running.
 - **Worker pool, not batches.** Up to `max_parallel` slices run at once. A slot that
   frees up takes the best ready slice immediately: the one with the most transitive
   dependants (**critical path first**).

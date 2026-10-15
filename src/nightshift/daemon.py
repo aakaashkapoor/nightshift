@@ -135,6 +135,7 @@ class Daemon:
         self._green: str | None = None  # last base commit whose check passed
         self._red: str | None = None  # last base commit whose check failed (already reported)
         self._waiting: dict[str, str] = {}  # last logged why-not-started map
+        self._unknown_deps: set[tuple[str, str]] = set()  # (slice, dep) already warned about
         self._rebase_tried: dict[str, str] = {}  # in-review slice id -> base commit last tried
         self._mode = "running"  # running | paused | stopping, mirrored into state.json
 
@@ -622,6 +623,7 @@ class Daemon:
         if self.runtime is not None:
             self.runtime.reconcile(known_slice_ids={s.id for s in slices}, worktrees=self.worktrees)
         dag = Dag.build(slices)
+        self._warn_unknown_deps(dag.unknown_deps())
         weight = dag.dependant_counts()
         order = {s.id: i for i, s in enumerate(slices)}
         runnable = sorted(
@@ -731,6 +733,18 @@ class Daemon:
                     interrupted=r.status == LIMITED,
                 )
                 self.runtime.clear(r.slice_id, "resume_prompt")
+
+    def _warn_unknown_deps(self, unknown: set[tuple[str, str]]) -> None:
+        """Warn once per (slice, dependency) the source does not return, until it changes."""
+        for sid, dep in sorted(unknown - self._unknown_deps):
+            log.warning(
+                "%s depends on %s, which is not ready (on hold or not a Nightshift issue); "
+                "%s waits",
+                sid,
+                dep,
+                sid,
+            )
+        self._unknown_deps = unknown
 
     def _log_waiting(self, waiting: dict[str, str]) -> None:
         if waiting == self._waiting:

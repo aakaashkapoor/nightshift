@@ -220,6 +220,9 @@ def test_unresolved_blocking_findings_block(repo, tmp_path) -> None:
     result = _run(repo, tmp_path, AlwaysBlock())
     assert result.status == "blocked"
     assert "review" in result.detail
+    assert "nope" in result.detail  # the finding itself, not just that one exists
+    (kept,) = (tmp_path / "wts").rglob("review-findings.md")
+    assert "- nope" in kept.read_text(encoding="utf-8")
 
 
 def test_advisory_findings_do_not_block(repo, tmp_path) -> None:

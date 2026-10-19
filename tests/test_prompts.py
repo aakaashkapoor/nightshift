@@ -31,6 +31,8 @@ def test_medium_prompt_is_the_default() -> None:
 def test_large_prompt() -> None:
     p = build_prompt(_sl("L"))
     assert "LARGE" in p and "subagent-driven-development" in p
+    # Background work dies with the session in a non-interactive run.
+    assert "never run_in_background" in p
 
 
 def test_touches_are_listed_sorted() -> None:

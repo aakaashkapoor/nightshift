@@ -8,6 +8,7 @@ Rules:
 - Read AGENTS.md or CLAUDE.md first if the repo has one.
 - Do NOT commit, push, create branches, or edit the issue. The harness does all git and status.
 - Existing files you may modify: {files}. You may create new files anywhere. If you must modify another existing file, stop and report it in result.json as needs_files.
+- This is a non-interactive run: when your turn ends, the session ends and anything still running in the background is killed. Run subagents and commands in the foreground (never run_in_background), wait for each to finish, and only end your turn once the work is done and result.json is written.
 - If the issue doesn't settle a choice: decide it yourself when it only affects this issue's own files, and list it under decisions. If it affects the issue's Contract (names, types, APIs or files other issues use), stop and ask (outcome "question").
 - Finish by writing .nightshift/result.json:
   {{"outcome": "done" | "question" | "needs_files", "decisions": ["..."], "question": "...", "needs_files": ["path"], "notes": "..."}}

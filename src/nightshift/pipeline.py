@@ -389,6 +389,7 @@ def run_slice(
 
     # Ship gate: always-on AI review (blocking findings loop back to a fix round).
     if reviewer is not None:
+        review = None
         for _ in range(review_rounds):
             try:
                 review = reviewer.review(wt.path, sl)
@@ -405,7 +406,12 @@ def run_slice(
             if not run_check(check_cmd, wt.path).passed:
                 return _blocked("review fix broke the check")
         else:
-            return _blocked("blocking review findings unresolved")
+            # Keep the findings: babysit can't see the reviewer's session, so without them
+            # the block says nothing about what to fix.
+            blocking = review.blocking if review is not None else []
+            _write_findings(Path(wt.path), blocking)
+            summary = "; ".join(f.message for f in blocking)
+            return _blocked(f"blocking review findings unresolved: {summary}"[:500])
 
     if not resuming and not _has_changes(wt.path):
         note = (exec_result.result_text or "").strip()[:300]
@@ -527,3 +533,11 @@ def run_resume_cli(
         daemon.runtime.record(slice_id, session_id=resumed.session_id, branch=resumed.branch)
         return resumed
     return daemon.finish(resumed)
+
+
+def _write_findings(worktree: Path, findings) -> None:
+    """Write unresolved blocking findings to .nightshift/review-findings.md in the worktree."""
+    out = worktree / ".nightshift" / "review-findings.md"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    lines = ["# Unresolved blocking review findings", ""] + [f"- {f.message}" for f in findings]
+    out.write_text("\n".join(lines) + "\n", encoding="utf-8")

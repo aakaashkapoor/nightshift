@@ -323,7 +323,12 @@ def issue_new(
 
     def step() -> str:
         if body_file is not None:
-            body = body_file.read_text(encoding="utf-8")
+            sections = (size, goal, acceptance, touches, decision, owns, uses, out_of_scope)
+            if any(sections) or subtasks_file is not None:
+                raise ValueError(
+                    "--body-file is a complete body: put the sections in the file, not in flags"
+                )
+            body = issues.with_depends(body_file.read_text(encoding="utf-8"), depends)
         elif size is None or goal is None:
             raise ValueError("give --size and --goal (and --acceptance/--touches), or --body-file")
         else:

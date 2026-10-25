@@ -222,3 +222,23 @@ def test_cli_set_prints_what_changed(fake) -> None:
 def test_cli_set_unknown_action_exits_1(fake) -> None:
     result = runner.invoke(app, ["issue", "set", "5", "bogus"])
     assert result.exit_code == 1 and "unknown action" in result.output
+
+
+def test_cli_new_from_body_file_keeps_depends(fake, tmp_path: Path) -> None:
+    body = tmp_path / "b.md"
+    body.write_text(render_issue(size="M", goal="G", acceptance=["a"], touches=["x.py"]), "utf-8")
+    args = ["issue", "new", "--title", "T", "--body-file", str(body), "--depends", "4"]
+    result = runner.invoke(app, [*args, "--depends", "#5"])
+    assert result.exit_code == 0, result.output
+    call = FakePR.instances[0].gh.calls[-1]
+    assert call[call.index("--body") + 1].endswith("\n\nDepends-on: #4, #5\n")
+
+
+def test_cli_new_body_file_refuses_section_flags(fake, tmp_path: Path) -> None:
+    body = tmp_path / "b.md"
+    body.write_text(render_issue(size="M", goal="G", acceptance=["a"], touches=["x.py"]), "utf-8")
+    args = ["issue", "new", "--title", "T", "--body-file", str(body), "--size", "S"]
+    result = runner.invoke(app, args)
+    assert result.exit_code != 0
+    assert "complete body" in result.output
+    assert FakePR.instances == []

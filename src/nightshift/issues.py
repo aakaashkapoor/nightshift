@@ -62,8 +62,19 @@ def render_issue(
     }
     blocks = [f"## {name}\n{sections[name]}" for name in TEMPLATE_ORDER if sections[name]]
     if depends:
-        blocks.append("Depends-on: " + ", ".join(f"#{d.lstrip('#')}" for d in depends))
+        blocks.append(_depends_line(depends))
     return "\n\n".join(blocks) + "\n"
+
+
+def _depends_line(depends: Sequence[str]) -> str:
+    return "Depends-on: " + ", ".join(f"#{d.lstrip('#')}" for d in depends)
+
+
+def with_depends(body: str, depends: Sequence[str]) -> str:
+    """``body`` with a ``Depends-on:`` line for ``depends`` appended (unchanged when there are none)."""
+    if not depends:
+        return body
+    return body.rstrip("\n") + "\n\n" + _depends_line(depends) + "\n"
 
 
 def create_issue(gh, *, title: str, body: str, review: bool = False, visual: bool = False) -> str:
